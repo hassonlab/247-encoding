@@ -1,5 +1,6 @@
 import csv
 import os
+import pickle
 from functools import partial
 from multiprocessing import Pool
 
@@ -7,8 +8,14 @@ import mat73
 import numpy as np
 from numba import jit, prange
 from scipy import stats
-from sklearn.model_selection import KFold
+from scipy.spatial.distance import cdist
 
+from sklearn.model_selection import KFold
+from sklearn.linear_model import LinearRegression
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.decomposition import PCA
+from sklearn.neighbors import NearestNeighbors
 
 def encColCorr(CA, CB):
     """[summary]
@@ -40,7 +47,7 @@ def encColCorr(CA, CB):
     return r, p, t
 
 
-def cv_lm_003(X, Y, kfolds):
+def cv_lm_003(X, Y, kfolds, near_neighbor=False):
     """Cross-validated predictions from a regression model using sequential
         block partitions with nuisance regressors included in the training
         folds
@@ -63,6 +70,8 @@ def cv_lm_003(X, Y, kfolds):
     folds = [t[1] for t in skf.split(np.arange(nSamps))]
 
     YHAT = np.zeros((nSamps, nChans))
+    YTES = np.zeros((nSamps, nChans))
+    YHAT_NN = np.zeros((nSamps, nChans)) if near_neighbor else None
     # Go through each fold, and split
     for i in range(kfolds):
         # Shift the number of folds for this iteration
@@ -73,33 +82,35 @@ def cv_lm_003(X, Y, kfolds):
         folds_ixs = np.roll(range(kfolds), i)
         test_fold = folds_ixs[-1]
         train_folds = folds_ixs[:-1]
-        # print(f'\nFold {i}. Training on {train_folds}, '
-        #       f'test on {test_fold}.')
 
         test_index = folds[test_fold]
-        # print(test_index)
         train_index = np.concatenate([folds[j] for j in train_folds])
 
         # Extract each set out of the big matricies
         Xtra, Xtes = X[train_index], X[test_index]
         Ytra, Ytes = Y[train_index], Y[test_index]
 
-        # Mean-center
-        Xtra -= np.mean(Xtra, axis=0)
-        Xtes -= np.mean(Xtes, axis=0)
-        Ytra -= np.mean(Ytra, axis=0)
-        Ytes -= np.mean(Ytes, axis=0)
+        # yscaler = StandardScaler()
+        # Ytra = yscaler.fit_transform(Ytra)
+        # Ytes = yscaler.transform(Ytes)
+        YTES[test_index, :] = Ytes
 
         # Fit model
-        B = np.linalg.pinv(Xtra) @ Ytra
+        model = make_pipeline(PCA(50, whiten=True), LinearRegression())
+        model.fit(Xtra, Ytra)
 
         # Predict
-        foldYhat = Xtes @ B
-
-        # Add to data matrices
+        foldYhat = model.predict(Xtes)
         YHAT[test_index, :] = foldYhat.reshape(-1, nChans)
 
-    return YHAT
+        if near_neighbor:
+            nbrs = NearestNeighbors(n_neighbors=1, metric='cosine')
+            nbrs.fit(Xtra)
+            _, I = nbrs.kneighbors(Xtes)
+            XtesNN = Xtra[I].squeeze()
+            YHAT_NN[test_index,:] = model.predict(XtesNN)
+
+    return YHAT, YHAT_NN, YTES
 
 
 @jit(nopython=True)
@@ -192,8 +203,21 @@ def encode_lags_numba(args, X, Y):
 
     Y = np.mean(Y, axis=-1)
 
-    PY_hat = cv_lm_003(X, Y, 10)
+    # First Differences Procedure
+    # X = np.diff(X, axis=0)
+    # Y = np.diff(Y, axis=0)
+
+    PY_hat, PY_hat_nn, Ytes = cv_lm_003(X, Y, 10, args.test_near_neighbor)
     rp, _, _ = encColCorr(Y, PY_hat)
+
+    if args.save_pred:
+        fn = os.path.join(args.full_output_dir, args.current_elec + '.pkl')
+        with open(fn, 'wb') as f:
+            pickle.dump({'electrode': args.current_elec,
+                         'lags': args.lags,
+                         'Y_signal': Ytes,
+                         'Yhat_nn_signal': PY_hat_nn,
+                         'Yhat_signal': PY_hat}, f)
 
     return rp
 
@@ -294,6 +318,9 @@ def encoding_regression_pr(args, datum, elec_signal, name):
         elec_signal (numpy.ndarray): of shape (num_samples, 1)
         name (str): electrode name
     """
+
+    datum = datum[datum.adjusted_onset.notna()]
+
     # Build design matrices
     X, Y = build_XY(args, datum, elec_signal)
 
@@ -314,6 +341,7 @@ def encoding_regression_pr(args, datum, elec_signal, name):
 def encoding_regression(args, datum, elec_signal, name):
 
     output_dir = args.full_output_dir
+    datum = datum[datum.adjusted_onset.notna()]
 
     # Build design matrices
     X, Y = build_XY(args, datum, elec_signal)
@@ -326,6 +354,7 @@ def encoding_regression(args, datum, elec_signal, name):
     comp_Y = Y[datum.speaker != 'Speaker1', :]
 
     print(f'{args.sid} {name} Prod: {len(prod_X)} Comp: {len(comp_X)}')
+    args.current_elec = name
 
     # Run permutation and save results
     trial_str = append_jobid_to_string(args, 'prod')
@@ -351,9 +380,15 @@ def setup_environ(args):
         stra = ''
         args.layer_idx = 1
 
+    # TODO make an arg
+    zeroshot = ''
+    # zeroshot = '_0shot'  # 
+    # zeroshot = '_0shot_new'  # 
+    # zeroshot = '_0shot_bbd'  # bobbi's datum
+
     args.emb_file = '_'.join([
         str(args.sid), args.pkl_identifier, args.emb_type, stra,
-        f'layer_{args.layer_idx:02d}', 'embeddings.pkl'
+        f'layer_{args.layer_idx:02d}', f'embeddings{zeroshot}.pkl'
     ])
     args.load_emb_file = args.emb_file.replace('__', '_')
 

@@ -174,6 +174,8 @@ def process_sig_electrodes(args, datum):
 
         # Read subject's header
         labels = load_header(CONV_DIR, subject_id)
+        if labels is None:
+            continue
         assert labels is not None, 'Missing header'
         electrode_num = labels.index(elec_name) + 1
 
@@ -187,6 +189,9 @@ def process_sig_electrodes(args, datum):
         try:
             elec_signal = loadmat(electrode_file)['p1st']
             elec_signal = elec_signal.reshape(-1, 1)
+            # # TODO - detrend with polynomial
+            # from scipy.signal import detrend
+            # elec_signal = detrend(elec_signal, type='linear')
         except FileNotFoundError:
             print(f'Missing: {electrode_file}')
             continue
@@ -229,6 +234,7 @@ def this_is_where_you_perform_regression(args, electrode_info, datum):
             print(f'Electrode ID {elec_id} does not exist')
             continue
 
+        args.current_elec = elec_name
         elec_signal = load_electrode_data(args, elec_id)
 
         # Perform encoding/regression
@@ -270,9 +276,55 @@ def main():
     # Locate and read datum
     datum = read_datum(args)
 
-    if args.pca_to:
-        print(f'PCAing to {args.pca_to}')
-        datum = run_pca(args, datum)
+    # # Convert Bobbi datum to pickle
+    # if False:
+    #     dirn = '/scratch/gpfs/zzada/247-pickling/'
+    #     df = pd.read_csv(dirn + 'podcast-datum-gpt2xl-50d-uniqueRand.csv', index_col=0)
+    #     df = df[df.in_gpt2.astype(bool) & df['x49'].notna() & ~df.is_nonword]
+    #     df['embeddings'] = [v.tolist() for v in df.iloc[:, -50:].values]
+    #     df.drop(inplace=True, axis=1, labels=['x0', 'x1', 'x2', 'x3', 'x4', 'x5', 'x6', 'x7', 'x8', 'x9', 'x10', 'x11', 'x12', 'x13', 'x14', 'x15', 'x16', 'x17', 'x18', 'x19', 'x20', 'x21', 'x22', 'x23', 'x24', 'x25', 'x26', 'x27', 'x28', 'x29', 'x30', 'x31', 'x32', 'x33', 'x34', 'x35', 'x36', 'x37', 'x38', 'x39', 'x40', 'x41', 'x42', 'x43', 'x44', 'x45', 'x46', 'x47', 'x48', 'x49'])
+    #     df['conversation_id'] = 0
+    #     df['token'] = df.word
+    #     df['adjusted_onset'] = df.onset
+    #     df['adjusted_offset'] = df.offset
+    #     df['convo_onset'] = datum.convo_onset.iloc[0].item()
+    #     df['convo_offset'] = datum.convo_offset.iloc[0].item()
+    #     datum = df
+
+    # if args.pca_to:
+    #     print(f'PCAing to {args.pca_to}')
+    #     datum = run_pca(args, datum)
+
+
+    # Choose zero shot uniqueness. PCA all before selecting unique words
+    # Note - make sure to comment out the PCA above
+    if True:
+        df = datum
+
+        import string
+        df['word'] = df.word.str.lower().str.strip(string.punctuation)
+
+        nans = df.embeddings.apply(lambda x: np.isnan(x).any())
+        same = df.token2word.str.lower().str.strip() == df.word.str.lower().str.strip()
+        notnon = df.is_nonword == 0
+
+        df2 = df[same & ~nans & notnon].copy()
+        df2.reset_index(drop=True, inplace=True)
+
+        # circular shift
+        # df2['adjusted_onset'] = np.roll(df2.onset.values.copy(), len(df2) // 2)
+
+        assert not df2.adjusted_onset.isna().any()
+
+        df3 = df2[['word', 'adjusted_onset']].copy()
+        dfz = df3.groupby('word').apply(lambda x: x.sample(1, random_state=42))
+        dfz.reset_index(level=1, inplace=True)
+        dfz.sort_values('adjusted_onset', inplace=True)
+        dfzz = df2.iloc[dfz.level_1.values]
+        print(dfzz.shape)
+
+        datum = dfzz
+
 
     # Processing significant electrodes or individual subjects
     if args.sig_elec_file:

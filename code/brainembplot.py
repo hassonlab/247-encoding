@@ -1,22 +1,59 @@
-# Takes 90s to make one plot with 161 lags and 5000 perms of sig
+# e22 - rerran 10 folds, pc
+# e23 - same but 4s
 
 import os
-import glob
 import pickle
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+from scipy.stats import zscore
 from statsmodels.stats import multitest
+from statsmodels.stats import stattools
 
 nperms = 5000
 pdir = '/scratch/gpfs/zzada/247-encoding/results/podcast/'
-dirs = ['0shot-zz-podcast-full-777-gpt2-xl/777/',
-        '0shot-zz-podcast-full-777-gpt2-xl-nn/777/',
-        '0shot-zz-podcast-full-777-gpt2-xl-shuffle/777/']
-colors = ['blue', 'red', 'gray']
-calcsig = True
-experiments = pd.read_csv('data/experiments.csv')
+
+dirs = ['0shot-zz-podcast-full-777-gpt2-xl-e23/777/',
+        '0shot-zz-podcast-full-777-gpt2-xl-e23-sh/777/']
+dirs = ['0shot-zz-podcast-full-777-gpt2-xl-717l/777/']
+# dirs = ['0shot-zz-podcast-full-777-gpt2-xl-717lfdp/777/']
+dirs = ['0shot-zz-podcast-full-777-gpt2-xl-717fdp/777/']
+dirs = ['0shot-zz-podcast-full-777-gpt2-xl-717detrend/777/']
+
+# Create experiments from master list
+elecs = pd.read_csv('data/elec_masterlist.csv')
+cats = ['princeton_class', 'NYU_class']
+
+subjects = [717, 798, 742, [717,798,742]]
+rois = ['IFG', 'STG', 'precentral', 'MFG']
+# rois += ['precentral', 'postcentral', 'supramarginal']
+
+# subjects = [[717,798,742]]
+
+subjects = [717]
+rois = ['IFG']
+cats = ['NYU_class']
+
+experiments = {}
+for category in cats:
+    for subject in subjects:
+        for roi in rois:
+            if isinstance(subject, int):
+                crit = elecs.subject == subject
+                name = '_'.join([str(subject), category, roi])
+            elif isinstance(subject, list):
+                crit = elecs.subject.isin(subject)
+                name = '_'.join(['all', category, roi])
+            crit &= (elecs[category] == roi)
+            subdf = elecs[crit]
+            # experiments[name] = subdf['name'].tolist()
+            experiments[name] = [str(x) + '_' + y for x, y in zip(subdf.subject, subdf.name)]
+
+custom = dirs[0].split('/')[0][-3:]
+custom = '717detrend'
+print(custom)
+print(len(experiments), 'experiments')
 
 
 def correlate(A, B, axis=0):
@@ -73,81 +110,158 @@ def fdr(pvals):
     return pcor
 
 
-for experiment in experiments.columns:
-    print(experiment)
-    elecs = experiments.loc[:, experiment]
+for experiment, elecs in experiments.items():
+    print(experiment, len(elecs))
 
-    fig, ax = plt.subplots()
+    dfs = []
+    fig, ax = plt.subplots(figsize=(8, 6))
     ax.axvline(0, ls='-', c='black', alpha=0.1)
     ax.axhline(0, ls='-', c='black', alpha=0.1)
-    ax.set(xlabel='Lag (ms)', ylabel='Correlation (r+se)')
-
-    allcorrs = []
+    ax.set(xlabel='Lag (s)', ylabel='Correlation (r+se)')
+    # ax.set_ylim([-0.05, 0.25])
 
     for i, resultdir in enumerate(dirs):
         lags = []
         signal = []
         pred_signal = []
+        nn_signal = []
 
+        # Load results of this run
         for elec in elecs:
+            if elec == '717_LGB79':
+                print('not skipping bad electrode')
+                # continue
             if pd.isna(elec):
                 continue
-            filename = pdir + resultdir + elec[2:5] + '_' + elec[30:] + '.pkl'
+            # filename = pdir + resultdir + elec[2:5] + '_' + elec[30:] + '.pkl'
+            filename = pdir + resultdir + elec + '.pkl'
             if not os.path.isfile(filename):
-                print(elec, 'is not found')
+                # print(filename, 'is not found')
                 continue
             with open(filename, 'rb') as f:
                 data = pickle.load(f)
                 lags = data['lags']
                 signal.append(data['Y_signal'])
                 pred_signal.append(data['Yhat_signal'])
+                nn_signal.append(data['Yhat_nn_signal'])
 
-        signal = np.stack(signal, axis=-1)
+        assert len(signal) > 0, 'None of the electrodes were found'
+        signal = np.stack(signal, axis=-1)  # n_words x n_lags x n_elecs
         pred_signal = np.stack(pred_signal, axis=-1)
+        nn_signal = np.stack(nn_signal, axis=-1)
 
-        corrs = []
-        sems = []
-        rawcorr = []
+        corrs, corrs_nn = [], []
+        sems, sems_nn = [], []
+        rawcorr, rawcorr_nn = [], []
+
         for lag in range(signal.shape[1]):
-            A = signal[:,lag,:]
-            B = pred_signal[:,lag,:]
-            rs = correlate(A, B, axis=1)
+            A = signal[:,lag,:]      # n_words x n_elecs
+            B = pred_signal[:,lag,:] # n_words x n_elecs
+            C = nn_signal[:,lag,:] # n_words x n_elecs
+            print(lag, stattools.durbin_watson(A - B, axis=0).mean())
+            A = zscore(A, axis=0)
+            B = zscore(B, axis=0)
+            C = zscore(C, axis=0)
+            rs = correlate(A, B, axis=1)  # 1 is rows, 0 is columns
             corrs.append(rs.mean())
             sems.append(rs.std() / np.sqrt(len(rs)))
             rawcorr.append(rs)
 
+            rs = correlate(A, C, axis=1)
+            corrs_nn.append(rs.mean())
+            sems_nn.append(rs.std() / np.sqrt(len(rs)))
+            rawcorr_nn.append(rs)
+
+        nelecs = signal.shape[-1]
+
+        # lags = list(map(str, lags))
+        lags = np.asarray(lags) / 1000
+        xaxis = lags
         mean = np.asarray(corrs)
         err = np.asarray(sems)
-        nelecs = signal.shape[-1]
-        lags = np.asarray(lags)
+        col = 'blue' if i == 0 else 'gray'
+        ax.plot(xaxis, mean, color=col)
+        ax.fill_between(xaxis, mean - err, mean + err, alpha=0.1, color=col)
 
-        ax.plot(lags, corrs, color=colors[i])
-        ax.fill_between(lags, mean - err, mean + err, alpha=0.1, color=colors[i])
+        corrs = np.vstack(rawcorr)
+        corrs2 = np.vstack(rawcorr_nn)
+
+        df = pd.DataFrame(corrs.T, columns=lags)
+        df.insert(0, 'type', 'actual' if i == 0 else 'shuffle')
+        dfs.append(df)
+
+        if i == 0:
+            mean_nn = np.asarray(corrs_nn)
+            err_nn = np.asarray(sems_nn)
+            ax.plot(xaxis, mean_nn, color='red')
+            ax.fill_between(xaxis, mean_nn - err_nn, mean_nn + err_nn, alpha=0.1, color='red')
+
+            df = pd.DataFrame(corrs2.T, columns=lags)
+            df.insert(0, 'type', 'near_neighbor')
+            dfs.append(df)
+
         ax.set_title(f'{experiment} | N={nelecs}')
 
-        allcorr = np.vstack(rawcorr)
-        allcorrs.append(allcorr)
+        if i==0 and nperms > 0:
+            # Calculate max of correlation significance
+            pvals = [one_samp_perm(corrs[i], nperms) for i in range(len(lags))]
+            pcorr = fdr(pvals)
+            m = corrs.mean(axis=1)
+            g = pcorr <= 0.01
+            minP = 0
+            if g.any():
+                sigSig = m[g]
+                if (pcorr > 0.01).any():
+                    maxP = m[pcorr > 0.01].max()
+                    gg = sigSig > maxP
+                    if gg.any():
+                        minP = sigSig[gg].min()
+                        ax.axhline(minP)
 
-    if calcsig:
-        corrs = allcorrs[0]
-        pvals = [one_samp_perm(corrs[i], nperms) for i in range(len(lags))]
-        pcorr = fdr(pvals)
-        m = corrs.mean(axis=1)
-        g = pcorr <= 0.01
-        if g.any():
-            sigSig = m[g]
-            if (pcorr > 0.01).any():
-                maxP = m[pcorr > 0.01].max()
-                gg = sigSig > maxP
-                if gg.any():
-                    minP = sigSig[gg].min()
-                    ax.axhline(minP)
+            pvals = [paired_permutation(corrs2[i], corrs[i], nperms) for i in range(len(lags))]
+            pcorr = fdr(pvals)
+            issig = (m > minP) & (pcorr < 0.01)
+            siglags = issig.nonzero()[0]
+            yheight = ax.get_ylim()[1] - .005
+            ax.scatter(lags[siglags], [yheight]*len(siglags), marker='*', color='blue')
 
-        corrs2 = allcorrs[1]
-        pvals = [paired_permutation(corrs2[i], corrs[i], nperms) for i in range(len(lags))]
-        pcorr = fdr(pvals)
-        siglags = (pcorr < 0.01).nonzero()[0]
-        yheight = ax.get_ylim()[1]
-        ax.scatter(lags[siglags], [yheight]*len(siglags), marker='*', color='blue')
+            dfs[0].insert(1, 'threshold', minP)
+            df = pd.DataFrame(issig).T.set_axis(lags, axis=1)
+            df.insert(0, 'type', 'is_significant')
+            dfs.append(df)
 
-    fig.savefig(f'results/figures/podcast-0shot-{experiment}-n_{nelecs}.png')
+        # # breakpoint()
+        # from matplotlib.backends.backend_pdf import PdfPages
+        # pdf = PdfPages('tmp.pdf')
+        # fig, ax = plt.subplots()
+        # ax.axvline(0, ls='-', c='black', alpha=0.1)
+        # ax.axhline(0, ls='-', c='black', alpha=0.1)
+        # ax.set(xlabel='Lag (s)', ylabel='Correlation (r+se)')
+        # # ax.set_ylim([-0.05, 0.25])
+        # ax.plot(lags, corrs.mean(axis=1), color='blue')
+        # ax.plot(lags, corrs2.mean(axis=1), color='red')
+        # ax.set_title('all')
+        # pdf.savefig(fig)
+        # plt.close()
+        # for j in range(nelecs):
+        #     fig, ax = plt.subplots()
+        #     ax.axvline(0, ls='-', c='black', alpha=0.1)
+        #     ax.axhline(0, ls='-', c='black', alpha=0.1)
+        #     ax.set(xlabel='Lag (s)', ylabel='Correlation (r+se)')
+        #     # ax.set_ylim([-0.05, 0.25])
+        #     ax.plot(lags, corrs[:,j], color='blue')
+        #     ax.plot(lags, corrs2[:,j], color='red')
+        #     ax.set_title(elecs[j])
+        #     pdf.savefig(fig)
+        #     plt.close()
+        # pdf.close()
+
+
+    df = pd.concat(dfs)
+    df.to_csv(f'results/figures/0shot-dat-{custom}-{experiment}-n_{nelecs}.csv')
+
+    fig.savefig(f'results/figures/0shot-fig-{custom}-{experiment}-n_{nelecs}.png')
+    plt.close()
+
+# subjects = [[662,717,723,741,742,743,763,798,]]
+# rois = ['precentral']

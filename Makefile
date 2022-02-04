@@ -2,25 +2,26 @@
 FILE := tfsenc_main
 USR := $(shell whoami | head -c 2)
 DT := $(shell date +"%Y%m%d-%H%M")
-DT := ${USR}
+DT :=  ${USR}
 
 # -----------------------------------------------------------------------------
 #  Configurable options
 # -----------------------------------------------------------------------------
 
-PRJCT_ID := tfs
+PRJCT_ID := podcast
 # {podcast | tfs}
 
 # 625 Electrode IDs
 SID := 625
 E_LIST := $(shell seq 1 105)
+E_LIST := 11 33 43
 
 # Sig file will override whatever electrodes you choose
 SIG_FN := 
 # SIG_FN := --sig-elec-file colton625.csv
 # SIG_FN := --sig-elec-file test.csv
 # SIG_FN := --sig-elec-file 129-phase-5000-sig-elec-glove50d-perElec-FDR-01-LH.csv
-SIG_FN := --sig-elec-file 625-61-mariano-prod.csv 625-58-mariano-comp.csv
+# SIG_FN := --sig-elec-file 625-61-mariano-prod.csv 625-58-mariano-comp.csv
 
 # 676 Electrode IDs
 # SID := 676
@@ -30,7 +31,7 @@ PKL_IDENTIFIER := full
 # {full | trimmed}
 
 # podcast electeode IDs
-# SID := 777
+SID := 777
 # SID := 661
 # E_LIST :=  $(shell seq 1 115)
 # SID := 662
@@ -50,15 +51,21 @@ PKL_IDENTIFIER := full
 # SID := 798
 # E_LIST :=  $(shell seq 1 195)
 #
-# SIG_FN := --sig-elec-file test.csv
+SIG_FN := --sig-elec-file pod2.csv
+SIG_FN := --sig-elec-file pod-micro-ifg.csv
+SIG_FN := --sig-elec-file podcast-all.csv
+SIG_FN := --sig-elec-file 717-all.csv
+SIG_FN := --sig-elec-file 717-ifg.csv
 # SIG_FN := --sig-elec-file 129-phase-5000-sig-elec-glove50d-perElec-FDR-01-LH.csv
 
 
 # number of permutations (goes with SH and PSH)
-NPERM := 1000
+NPERM := 1
 
 # Choose the lags to run for.
 LAGS := {-2000..2000..25}
+# LAGS := {-4000..4000..25}
+# LAGS := {-20000..20000..250}
 
 CONVERSATION_IDX := 0
 
@@ -102,7 +109,7 @@ WV := all
 
 # Choose the command to run: python runs locally, echo is for debugging, sbatch
 # is for running on SLURM all lags in parallel.
-CMD := sbatch submit1.sh
+CMD := python
 # {echo | python | sbatch submit1.sh}
 
 # datum
@@ -149,8 +156,10 @@ run-encoding:
 		$(SH) \
 		$(PSH) \
 		--normalize $(NM)\
-		--output-parent-dir $(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB) \
-		--output-prefix '';\
+		--output-parent-dir 0shot-$(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-717detrend \
+		--output-prefix '' \
+		--save-pred \
+		--test-near-neighbor
 
 # Recommended naming convention for output_folder
 #--output-prefix $(USR)-$(WS)ms-$(WV); \
@@ -267,12 +276,11 @@ plot-encoding1:
 plot-new:
 	python code/plot.py \
 		--formats \
-			'results/tfs/zz1-tfs-full-625-gpt2-xl/625/*_%s.csv' \
-			'results/tfs/zz1-tfs-full-625-glove50/625/*_%s.csv' \
-		--labels gpt2 glove \
+			'results/tfs/sigtestzz-tfs-full-625-glove50/625/*_%s.csv' \
+		--labels glove \
 		$(SIG_FN) \
 		--values $(LAGS) \
 		--keys prod comp \
-		--outfile results/figures/247-625-gg-sig.pdf
+		--outfile results/figures/247-625-glove-sigtest.pdf
 	rsync -av results/figures/ ~/tigress/247-encoding-results/figures/
 

@@ -38,12 +38,14 @@ def parse_arguments():
     parser.add_argument('--min-word-freq', nargs='?', type=int, default=5)
     parser.add_argument('--exclude-nonwords', action='store_true')
     parser.add_argument('--job-id', type=int, default=0)
+    parser.add_argument('--test-near-neighbor', action='store_true')
 
     parser.add_argument('--pca-to', nargs='?', type=int, default=0)
 
     parser.add_argument('--align-with', nargs='*', type=str, default=None)
 
     parser.add_argument('--output-parent-dir', type=str, default='test')
+    parser.add_argument('--save-pred', action='store_true')
     parser.add_argument('--pkl-identifier', type=str, default=None)
 
     args = parser.parse_args()

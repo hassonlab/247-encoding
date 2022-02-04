@@ -191,31 +191,37 @@ def read_datum(args):
     # df = df[~df['glove50_embeddings'].isna()]
 
     # Apply filters
-    common = df.in_glove
+    common = []
     for model in args.align_with:
         if 'gpt2' in model:
-            common = common & df.in_gpt2
+            common.append(df.in_gpt2.values)
         elif 'blenderbot-small' in model:
-            common = common & df.in_blenderbot_small_90M
+            common.append(df.in_blenderbot_small_90M.values)
+        elif 'glove' in model:
+            common.append(df.in_glove.values)
         elif 'blenderbot' in model:
-            common = common & df.in_blenderbot_3B
+            common.append(df.in_blenderbot_3B.values)
 
     if 'gpt2' in args.emb_type.lower():
-        common = common & df.in_gpt2
+        common.append(df.in_gpt2.values)
     elif 'blenderbot-small' in args.emb_type.lower():
-        common = common & df.in_blenderbot_small_90M
+        common.append(df.in_blenderbot_small_90M.values)
     elif 'blenderbot' in args.emb_type.lower():
-        common = common & df.in_blenderbot_3B
+        common.append(df.in_blenderbot_3B.values)
 
     if args.exclude_nonwords:
         nonword_mask = df.word.str.lower().apply(lambda x: x in NONWORDS)
-        common &= ~nonword_mask
+        common.append(~nonword_mask.values)
 
     if args.min_word_freq > 0:
         freq_mask = df.word_freq_overall >= args.min_word_freq
-        common &= freq_mask
+        common.append(freq_mask)
 
-    df = df[common]
+    # # NOTE  something happening here, in_gpt2 messed up apparently
+    # if len(common):
+    #     common = np.vstack(common)
+    #     df = df[common.all(axis=0)].copy()
+
     end_n = len(df)
     print(f'Went from {start_n} words to {end_n} words')
 
