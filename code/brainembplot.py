@@ -7,33 +7,36 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
+from multiprocessing import Pool
+
 from scipy.stats import zscore
 from statsmodels.stats import multitest
 from statsmodels.stats import stattools
 
+n_workers = 2
 nperms = 5000
 pdir = '/scratch/gpfs/zzada/247-encoding/results/podcast/'
 
 dirs = ['0shot-zz-podcast-full-777-gpt2-xl-e23/777/',
         '0shot-zz-podcast-full-777-gpt2-xl-e23-sh/777/']
-dirs = ['0shot-zz-podcast-full-777-gpt2-xl-717l/777/']
+
+# dirs = ['0shot-zz-podcast-full-777-gpt2-xl-717l/777/']
 # dirs = ['0shot-zz-podcast-full-777-gpt2-xl-717lfdp/777/']
-dirs = ['0shot-zz-podcast-full-777-gpt2-xl-717fdp/777/']
-dirs = ['0shot-zz-podcast-full-777-gpt2-xl-717detrend/777/']
+# dirs = ['0shot-zz-podcast-full-777-gpt2-xl-717fdp/777/']
+# dirs = ['0shot-zz-podcast-full-777-gpt2-xl-717detrend/777/']
+dirs = ['0shot-zz-podcast-full-777-gpt2-xl-717ldp1/777/']
+
+dirs = ['0shot-zz-podcast-full-777-gpt2-xl-polydet2/777/',
+        '0shot-zz-podcast-full-777-gpt2-xl-polydet2-sh/777/']
+
 
 # Create experiments from master list
 elecs = pd.read_csv('data/elec_masterlist.csv')
 cats = ['princeton_class', 'NYU_class']
 
-subjects = [717, 798, 742, [717,798,742]]
-rois = ['IFG', 'STG', 'precentral', 'MFG']
-# rois += ['precentral', 'postcentral', 'supramarginal']
-
-# subjects = [[717,798,742]]
-
-subjects = [717]
-rois = ['IFG']
 cats = ['NYU_class']
+subjects = [717, 798, 742, [717,798,742], [662,717,723,741,742,743,763,798]]
+rois = ['IFG', 'precentral', 'postcentral', 'STG']
 
 experiments = {}
 for category in cats:
@@ -43,17 +46,20 @@ for category in cats:
                 crit = elecs.subject == subject
                 name = '_'.join([str(subject), category, roi])
             elif isinstance(subject, list):
+                m = len(subject)
                 crit = elecs.subject.isin(subject)
-                name = '_'.join(['all', category, roi])
+                name = '_'.join([f'all{m}', category, roi])
             crit &= (elecs[category] == roi)
             subdf = elecs[crit]
-            # experiments[name] = subdf['name'].tolist()
-            experiments[name] = [str(x) + '_' + y for x, y in zip(subdf.subject, subdf.name)]
+            es = [str(x) + '_' + y for x, y in zip(subdf.subject, subdf.name)]
+            if len(es):
+                experiments[name] = es
 
 custom = dirs[0].split('/')[0][-3:]
-custom = '717detrend'
 print(custom)
 print(len(experiments), 'experiments')
+
+            # if elec == '717_LGB79':
 
 
 def correlate(A, B, axis=0):
@@ -110,7 +116,7 @@ def fdr(pvals):
     return pcor
 
 
-for experiment, elecs in experiments.items():
+def run_exp(experiment, elecs):
     print(experiment, len(elecs))
 
     dfs = []
@@ -128,9 +134,6 @@ for experiment, elecs in experiments.items():
 
         # Load results of this run
         for elec in elecs:
-            if elec == '717_LGB79':
-                print('not skipping bad electrode')
-                # continue
             if pd.isna(elec):
                 continue
             # filename = pdir + resultdir + elec[2:5] + '_' + elec[30:] + '.pkl'
@@ -145,7 +148,10 @@ for experiment, elecs in experiments.items():
                 pred_signal.append(data['Yhat_signal'])
                 nn_signal.append(data['Yhat_nn_signal'])
 
-        assert len(signal) > 0, 'None of the electrodes were found'
+        if len(signal) == 0:
+            print('None of the electrodes were found')
+            break
+
         signal = np.stack(signal, axis=-1)  # n_words x n_lags x n_elecs
         pred_signal = np.stack(pred_signal, axis=-1)
         nn_signal = np.stack(nn_signal, axis=-1)
@@ -153,12 +159,13 @@ for experiment, elecs in experiments.items():
         corrs, corrs_nn = [], []
         sems, sems_nn = [], []
         rawcorr, rawcorr_nn = [], []
+        acdw = []
 
         for lag in range(signal.shape[1]):
             A = signal[:,lag,:]      # n_words x n_elecs
             B = pred_signal[:,lag,:] # n_words x n_elecs
             C = nn_signal[:,lag,:] # n_words x n_elecs
-            print(lag, stattools.durbin_watson(A - B, axis=0).mean())
+            # acdw.append(stattools.durbin_watson(A - B, axis=0).mean())
             A = zscore(A, axis=0)
             B = zscore(B, axis=0)
             C = zscore(C, axis=0)
@@ -172,6 +179,7 @@ for experiment, elecs in experiments.items():
             sems_nn.append(rs.std() / np.sqrt(len(rs)))
             rawcorr_nn.append(rs)
 
+        # print('avg DW:', np.mean(acdw))
         nelecs = signal.shape[-1]
 
         # lags = list(map(str, lags))
@@ -263,5 +271,7 @@ for experiment, elecs in experiments.items():
     fig.savefig(f'results/figures/0shot-fig-{custom}-{experiment}-n_{nelecs}.png')
     plt.close()
 
-# subjects = [[662,717,723,741,742,743,763,798,]]
-# rois = ['precentral']
+
+if __name__ == '__main__':
+    with Pool(min(n_workers, len(experiments))) as p:
+        p.starmap(run_exp, experiments.items())

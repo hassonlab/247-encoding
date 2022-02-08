@@ -53,9 +53,9 @@ SID := 777
 #
 SIG_FN := --sig-elec-file pod2.csv
 SIG_FN := --sig-elec-file pod-micro-ifg.csv
-SIG_FN := --sig-elec-file podcast-all.csv
 SIG_FN := --sig-elec-file 717-all.csv
 SIG_FN := --sig-elec-file 717-ifg.csv
+SIG_FN := --sig-elec-file podcast-all.csv
 # SIG_FN := --sig-elec-file 129-phase-5000-sig-elec-glove50d-perElec-FDR-01-LH.csv
 
 
@@ -63,8 +63,8 @@ SIG_FN := --sig-elec-file 717-ifg.csv
 NPERM := 1
 
 # Choose the lags to run for.
-LAGS := {-2000..2000..25}
-# LAGS := {-4000..4000..25}
+# LAGS := {-2000..2000..25}
+LAGS := {-4000..4000..25}
 # LAGS := {-20000..20000..250}
 
 CONVERSATION_IDX := 0
@@ -100,7 +100,7 @@ MWF := 0
 WV := all
 
 # Choose whether to label or phase shuffle
-# SH := --shuffle
+SH := --shuffle
 # PSH := --phase-shuffle
 
 # Choose whether to normalize the embeddings
@@ -156,7 +156,7 @@ run-encoding:
 		$(SH) \
 		$(PSH) \
 		--normalize $(NM)\
-		--output-parent-dir 0shot-$(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-717detrend \
+		--output-parent-dir 0shot-$(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-polydet2-sh \
 		--output-prefix '' \
 		--save-pred \
 		--test-near-neighbor

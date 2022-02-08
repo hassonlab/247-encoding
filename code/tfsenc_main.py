@@ -16,6 +16,9 @@ from tfsenc_utils import (append_jobid_to_string, create_output_directory,
                           load_header, setup_environ)
 from utils import load_pickle, main_timer, write_config
 
+from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import PolynomialFeatures
+
 
 def trim_signal(signal):
     bin_size = 32  # 62.5 ms (62.5/1000 * 512)
@@ -189,9 +192,19 @@ def process_sig_electrodes(args, datum):
         try:
             elec_signal = loadmat(electrode_file)['p1st']
             elec_signal = elec_signal.reshape(-1, 1)
-            # # TODO - detrend with polynomial
-            # from scipy.signal import detrend
-            # elec_signal = detrend(elec_signal, type='linear')
+
+            # NOTE - detrend
+            y = elec_signal
+            X = np.arange(len(y)).reshape(-1, 1)
+            pf = PolynomialFeatures(degree=2)
+            Xp = pf.fit_transform(X)
+
+            model = LinearRegression()
+            model.fit(Xp, y)
+            trend = model.predict(Xp)
+
+            elec_signal = y - trend
+
         except FileNotFoundError:
             print(f'Missing: {electrode_file}')
             continue
