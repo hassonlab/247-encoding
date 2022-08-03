@@ -503,7 +503,7 @@ LAGS_FINAL := -99999999 # select all the lags that are concatenated (quardra)
 
 
 concat-lags:
-	python code/concat_lags.py \
+	python code/tfsenc_concat.py \
 		--formats \
 			'results/tfs/625-676/kw-tfs-full-676-gpt2-xl-ctx-128-lag10-25/kw-200ms-all-676/' \
 			'results/tfs/625-676/kw-tfs-full-676-gpt2-xl-ctx-128-lag60-10k/kw-200ms-all-676/' \
