@@ -226,7 +226,7 @@ def filter_datum(args, df):
         common = common & df[f"in_{model}"]
 
     if args.exclude_nonwords:  # filter based on exclude_nonwords argument
-        nonword_mask = df.word.str.lower().apply(lambda x: x in NONWORDS)
+        nonword_mask = df.word.str.lower().isin(args["non_words"])
         common &= ~nonword_mask
 
     if args.min_word_freq > 0:  # filter based on min_word_freq argument
