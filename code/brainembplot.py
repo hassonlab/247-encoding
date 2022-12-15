@@ -1,5 +1,6 @@
 # e22 - rerran 10 folds, pc
 # e23 - same but 4s
+# if elec == '717_LGB79':
 
 import os
 import pickle
@@ -9,12 +10,12 @@ import matplotlib.pyplot as plt
 
 from multiprocessing import Pool
 
-from scipy.stats import zscore
+from scipy.stats import zscore, pearsonr
 from statsmodels.stats import multitest
-from statsmodels.stats import stattools
+# from statsmodels.stats import stattools
 
-n_workers = 2
-nperms = 5000
+n_workers = 9
+nperms = 0
 pdir = '/scratch/gpfs/zzada/247-encoding/results/podcast/'
 
 dirs = ['0shot-zz-podcast-full-777-gpt2-xl-e23/777/',
@@ -26,8 +27,8 @@ dirs = ['0shot-zz-podcast-full-777-gpt2-xl-e23/777/',
 # dirs = ['0shot-zz-podcast-full-777-gpt2-xl-717detrend/777/']
 dirs = ['0shot-zz-podcast-full-777-gpt2-xl-717ldp1/777/']
 
-dirs = ['0shot-zz-podcast-full-777-gpt2-xl-polydet2/777/',
-        '0shot-zz-podcast-full-777-gpt2-xl-polydet2-sh/777/']
+dirs = ['0shot-zz-podcast-full-777-gpt2-xl-polydet2/777/',]
+        # '0shot-zz-podcast-full-777-gpt2-xl-polydet2-sh/777/']
 
 
 # Create experiments from master list
@@ -37,29 +38,60 @@ cats = ['princeton_class', 'NYU_class']
 cats = ['NYU_class']
 subjects = [717, 798, 742, [717,798,742], [662,717,723,741,742,743,763,798]]
 rois = ['IFG', 'precentral', 'postcentral', 'STG']
+# rois = [['precentral', 'postcentral']]
+
+subjects = [[717, 798, 742]]
+rois = ['IFG']
+
+datum = pd.read_csv('zaid.csv')
+words = datum.word.tolist()
 
 experiments = {}
 for category in cats:
     for subject in subjects:
         for roi in rois:
+            name = ''
             if isinstance(subject, int):
                 crit = elecs.subject == subject
-                name = '_'.join([str(subject), category, roi])
+                name += '_'.join([str(subject), category])
             elif isinstance(subject, list):
                 m = len(subject)
                 crit = elecs.subject.isin(subject)
-                name = '_'.join([f'all{m}', category, roi])
-            crit &= (elecs[category] == roi)
+                name += '_'.join([f'all{m}', category])
+
+            if isinstance(roi, str):
+                crit &= (elecs[category] == roi)
+                name += '_' + roi
+            elif isinstance(roi, list):
+                crit &= elecs[category].isin(roi)
+                name += '_' + ''.join(r[:3] for r in roi) + str(len(roi))
+
             subdf = elecs[crit]
             es = [str(x) + '_' + y for x, y in zip(subdf.subject, subdf.name)]
+            # es = subdf.name.tolist()
             if len(es):
                 experiments[name] = es
 
 custom = dirs[0].split('/')[0][-3:]
 print(custom)
-print(len(experiments), 'experiments')
 
-            # if elec == '717_LGB79':
+# experiments = {}
+# # experiments['717_NYU_class_2good'] = ['717_LGA10', '717_LGB79']
+# experiments['717_NYU_class_3good'] = ['717_LGA10', '717_LGB79', '717_LGB121']
+# experiments['717_NYU_class_4good'] = ['717_LGA10', '717_LGB79', '717_LGB121', '717_LGA38']
+# # 717 - 46
+
+name = 'all3_NYU_class_IFG'
+print(experiments.keys())
+elecs = experiments[name]
+print(len(elecs))
+experiments = {}
+k = 40
+for i in range(250):
+    experiments[f'{name}_{i}'] = np.random.choice(elecs, k, replace=False).tolist()
+outdir = f'results/sample{k}/'
+
+print(len(experiments), 'experiments')
 
 
 def correlate(A, B, axis=0):
@@ -150,7 +182,7 @@ def run_exp(experiment, elecs):
 
         if len(signal) == 0:
             print('None of the electrodes were found')
-            break
+            return
 
         signal = np.stack(signal, axis=-1)  # n_words x n_lags x n_elecs
         pred_signal = np.stack(pred_signal, axis=-1)
@@ -194,6 +226,18 @@ def run_exp(experiment, elecs):
         corrs = np.vstack(rawcorr)
         corrs2 = np.vstack(rawcorr_nn)
 
+        # Do per word significance checking
+        # besti = mean.argmax()
+        # A = zscore(signal[:, besti, :], 0)
+        # B = zscore(pred_signal[:, besti, :], 0)
+        # rps = [pearsonr(A[j], B[j]) for j in range(len(A))]
+        # rs, ps = list(zip(*rps))
+        # qs = fdr(ps)
+        # df = pd.DataFrame({'word': words, 'r': rs, 'p': ps, 'q': qs, 'lag': lags[besti]})
+        # df.sort_values('q', inplace=True)
+        # df.to_csv(f'results/figures/0shot-dat-{custom}-{experiment}-n_{nelecs}-words.csv')
+        # break
+
         df = pd.DataFrame(corrs.T, columns=lags)
         df.insert(0, 'type', 'actual' if i == 0 else 'shuffle')
         dfs.append(df)
@@ -210,7 +254,7 @@ def run_exp(experiment, elecs):
 
         ax.set_title(f'{experiment} | N={nelecs}')
 
-        if i==0 and nperms > 0:
+        if i == 0 and nperms > 0:
             # Calculate max of correlation significance
             pvals = [one_samp_perm(corrs[i], nperms) for i in range(len(lags))]
             pcorr = fdr(pvals)
@@ -238,6 +282,7 @@ def run_exp(experiment, elecs):
             df.insert(0, 'type', 'is_significant')
             dfs.append(df)
 
+        # Ploot each electrode separately
         # # breakpoint()
         # from matplotlib.backends.backend_pdf import PdfPages
         # pdf = PdfPages('tmp.pdf')
@@ -264,14 +309,17 @@ def run_exp(experiment, elecs):
         #     plt.close()
         # pdf.close()
 
-
     df = pd.concat(dfs)
-    df.to_csv(f'results/figures/0shot-dat-{custom}-{experiment}-n_{nelecs}.csv')
+    df.to_csv(f'{outdir}/0shot-dat-{custom}-{experiment}-n_{nelecs}.csv')
 
-    fig.savefig(f'results/figures/0shot-fig-{custom}-{experiment}-n_{nelecs}.png')
+    # fig.savefig(f'{outdir}/0shot-fig-{custom}-{experiment}-n_{nelecs}.png')
     plt.close()
 
 
 if __name__ == '__main__':
-    with Pool(min(n_workers, len(experiments))) as p:
-        p.starmap(run_exp, experiments.items())
+    if n_workers > 1:
+        with Pool(min(n_workers, len(experiments))) as p:
+            p.starmap(run_exp, experiments.items())
+    else:
+        for kv in experiments.items():
+            run_exp(*kv)
