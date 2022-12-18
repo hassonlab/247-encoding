@@ -6,6 +6,7 @@ from multiprocessing import Pool
 
 import mat73
 import numpy as np
+import pandas as pd
 from numba import jit, prange
 from scipy import stats
 from scipy.spatial.distance import cdist
@@ -16,6 +17,7 @@ from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.neighbors import NearestNeighbors
+
 
 def encColCorr(CA, CB):
     """[summary]
@@ -47,7 +49,9 @@ def encColCorr(CA, CB):
     return r, p, t
 
 
-def cv_lm_003(X, Y, kfolds, near_neighbor=False):
+def cv_lm_003(
+    X, Y, kfolds, near_neighbor=False, near_neighbor_test=True, given_fold=None
+):
     """Cross-validated predictions from a regression model using sequential
         block partitions with nuisance regressors included in the training
         folds
@@ -60,18 +64,30 @@ def cv_lm_003(X, Y, kfolds, near_neighbor=False):
     Returns:
         [type]: [description]
     """
-    skf = KFold(n_splits=kfolds, shuffle=False)
 
     # Data size
     nSamps = X.shape[0]
     nChans = Y.shape[1] if Y.shape[1:] else 1
 
     # Extract only test folds
-    folds = [t[1] for t in skf.split(np.arange(nSamps))]
+    if isinstance(given_fold, pd.Series):
+        print("Provided Fold")
+        folds = []
+        given_fold = given_fold.tolist()
+        for _ in set(given_fold):
+            folds.append(np.array([], dtype=int))
+        for index, fold in enumerate(given_fold):
+            folds[int(fold)] = np.append(folds[int(fold)], index)
+    else:
+        print("Kfold")
+        skf = KFold(n_splits=kfolds, shuffle=False)
+        folds = [t[1] for t in skf.split(np.arange(nSamps))]
 
     YHAT = np.zeros((nSamps, nChans))
     YTES = np.zeros((nSamps, nChans))
     YHAT_NN = np.zeros((nSamps, nChans)) if near_neighbor else None
+    YHAT_NNT = np.zeros((nSamps, nChans)) if near_neighbor_test else None
+
     # Go through each fold, and split
     for i in range(kfolds):
         # Shift the number of folds for this iteration
@@ -104,13 +120,20 @@ def cv_lm_003(X, Y, kfolds, near_neighbor=False):
         YHAT[test_index, :] = foldYhat.reshape(-1, nChans)
 
         if near_neighbor:
-            nbrs = NearestNeighbors(n_neighbors=1, metric='cosine')
+            nbrs = NearestNeighbors(n_neighbors=1, metric="cosine")
             nbrs.fit(Xtra)
             _, I = nbrs.kneighbors(Xtes)
             XtesNN = Xtra[I].squeeze()
-            YHAT_NN[test_index,:] = model.predict(XtesNN)
+            YHAT_NN[test_index, :] = model.predict(XtesNN)
 
-    return YHAT, YHAT_NN, YTES
+        if near_neighbor_test:
+            nbrs = NearestNeighbors(n_neighbors=1, metric="cosine")
+            nbrs.fit(Xtes)
+            _, I = nbrs.kneighbors()
+            XtesNNT = Xtes[I].squeeze()
+            YHAT_NNT[test_index, :] = model.predict(XtesNNT)
+
+    return YHAT, YHAT_NN, YHAT_NNT, YTES
 
 
 @jit(nopython=True)
@@ -125,8 +148,9 @@ def fit_model(X, y):
 
 
 @jit(nopython=True)
-def build_Y(onsets, convo_onsets, convo_offsets, brain_signal, lags,
-            window_size):
+def build_Y(
+    onsets, convo_onsets, convo_offsets, brain_signal, lags, window_size
+):
     """[summary]
 
     Args:
@@ -148,8 +172,11 @@ def build_Y(onsets, convo_onsets, convo_offsets, brain_signal, lags,
 
         index_onsets = np.minimum(
             convo_offsets - half_window - 1,
-            np.maximum(convo_onsets + half_window + 1,
-                       np.round_(onsets, 0, onsets) + lag_amount))
+            np.maximum(
+                convo_onsets + half_window + 1,
+                np.round_(onsets, 0, onsets) + lag_amount,
+            ),
+        )
 
         # subtracting 1 from starts to account for 0-indexing
         starts = index_onsets - half_window - 1
@@ -175,7 +202,7 @@ def build_XY(args, datum, brain_signal):
     Returns:
         [type]: [description]
     """
-    X = np.stack(datum.embeddings).astype('float64')
+    X = np.stack(datum.embeddings).astype("float64")
 
     word_onsets = datum.adjusted_onset.values
     convo_onsets = datum.convo_onset.values
@@ -184,13 +211,19 @@ def build_XY(args, datum, brain_signal):
     lags = np.array(args.lags)
     brain_signal = brain_signal.reshape(-1, 1)
 
-    Y = build_Y(word_onsets, convo_onsets, convo_offsets, brain_signal, lags,
-                args.window_size)
+    Y = build_Y(
+        word_onsets,
+        convo_onsets,
+        convo_offsets,
+        brain_signal,
+        lags,
+        args.window_size,
+    )
 
     return X, Y
 
 
-def encode_lags_numba(args, X, Y):
+def encode_lags_numba(args, X, Y, fold):
     """[summary]
     Args:
         X ([type]): [description]
@@ -207,23 +240,31 @@ def encode_lags_numba(args, X, Y):
     # X = np.diff(X, axis=0)
     # Y = np.diff(Y, axis=0)
 
-    PY_hat, PY_hat_nn, Ytes = cv_lm_003(X, Y, 10, args.test_near_neighbor)
+    PY_hat, PY_hat_nn, PY_hat_nnt, Ytes = cv_lm_003(
+        X, Y, 10, args.test_near_neighbor, args.test_near_neighbor, fold
+    )
     rp, _, _ = encColCorr(Y, PY_hat)
 
     if args.save_pred:
-        fn = os.path.join(args.full_output_dir, args.current_elec + '.pkl')
-        with open(fn, 'wb') as f:
-            pickle.dump({'electrode': args.current_elec,
-                         'lags': args.lags,
-                         'Y_signal': Ytes,
-                         'Yhat_nn_signal': PY_hat_nn,
-                         'Yhat_signal': PY_hat}, f)
+        fn = os.path.join(args.full_output_dir, args.current_elec + ".pkl")
+        with open(fn, "wb") as f:
+            pickle.dump(
+                {
+                    "electrode": args.current_elec,
+                    "lags": args.lags,
+                    "Y_signal": Ytes,
+                    "Yhat_nn_signal": PY_hat_nn,
+                    "Yhat_nnt_signal": PY_hat_nnt,
+                    "Yhat_signal": PY_hat,
+                },
+                f,
+            )
 
     return rp
 
 
-def encoding_mp(_, args, prod_X, prod_Y):
-    perm_rc = encode_lags_numba(args, prod_X, prod_Y)
+def encoding_mp(_, args, prod_X, prod_Y, fold):
+    perm_rc = encode_lags_numba(args, prod_X, prod_Y, fold)
     return perm_rc
 
 
@@ -243,7 +284,7 @@ def run_save_permutation_pr(args, prod_X, prod_Y, filename):
     return perm_rc
 
 
-def run_save_permutation(args, prod_X, prod_Y, filename):
+def run_save_permutation(args, prod_X, prod_Y, filename, fold=None):
     """[summary]
 
     Args:
@@ -254,20 +295,25 @@ def run_save_permutation(args, prod_X, prod_Y, filename):
     """
     if prod_X.shape[0]:
         if args.parallel:
-            print(f'Running {args.npermutations} in parallel')
+            print(f"Running {args.npermutations} in parallel")
             with Pool(16) as pool:
                 perm_prod = pool.map(
-                    partial(encoding_mp,
-                            args=args,
-                            prod_X=prod_X,
-                            prod_Y=prod_Y), range(args.npermutations))
+                    partial(
+                        encoding_mp,
+                        args=args,
+                        prod_X=prod_X,
+                        prod_Y=prod_Y,
+                        fold=fold,
+                    ),
+                    range(args.npermutations),
+                )
         else:
             perm_prod = []
             for i in range(args.npermutations):
-                perm_prod.append(encoding_mp(i, args, prod_X, prod_Y))
+                perm_prod.append(encoding_mp(i, args, prod_X, prod_Y, fold))
                 # print(max(perm_prod[-1]), np.mean(perm_prod[-1]))
 
-        with open(filename, 'w') as csvfile:
+        with open(filename, "w") as csvfile:
             csvwriter = csv.writer(csvfile)
             csvwriter.writerows(perm_prod)
 
@@ -282,13 +328,14 @@ def load_header(conversation_dir, subject_id):
     Returns:
         list: labels
     """
-    misc_dir = os.path.join(conversation_dir, subject_id, 'misc')
-    header_file = os.path.join(misc_dir, subject_id + '_header.mat')
+    misc_dir = os.path.join(conversation_dir, subject_id, "misc")
+    header_file = os.path.join(misc_dir, subject_id + "_header.mat")
     if not os.path.exists(header_file):
-        print(f'[WARN] no header found in {misc_dir}')
+        print(f"[WARN] no header found in {misc_dir}")
         return
     header = mat73.loadmat(header_file)
-    labels = header.header.label
+    # labels = header.header.label
+    labels = header["header"]["label"]
 
     return labels
 
@@ -299,10 +346,15 @@ def create_output_directory(args):
     # folder_name = folder_name + '-pca_' + str(args.reduce_to) + 'd'
     # full_output_dir = os.path.join(args.output_dir, folder_name)
 
-    folder_name = '-'.join([args.output_prefix, str(args.sid)])
-    folder_name = folder_name.strip('-')
-    full_output_dir = os.path.join(os.getcwd(), 'results', args.project_id,
-                                   args.output_parent_dir, folder_name)
+    folder_name = "-".join([args.output_prefix, str(args.sid)])
+    folder_name = folder_name.strip("-")
+    full_output_dir = os.path.join(
+        os.getcwd(),
+        "results",
+        args.project_id,
+        args.output_parent_dir,
+        folder_name,
+    )
 
     os.makedirs(full_output_dir, exist_ok=True)
 
@@ -325,11 +377,11 @@ def encoding_regression_pr(args, datum, elec_signal, name):
     X, Y = build_XY(args, datum, elec_signal)
 
     # Split into production and comprehension
-    prod_X = X[datum.speaker == 'Speaker1', :]
-    comp_X = X[datum.speaker != 'Speaker1', :]
+    prod_X = X[datum.speaker == "Speaker1", :]
+    comp_X = X[datum.speaker != "Speaker1", :]
 
-    prod_Y = Y[datum.speaker == 'Speaker1', :]
-    comp_Y = Y[datum.speaker != 'Speaker1', :]
+    prod_Y = Y[datum.speaker == "Speaker1", :]
+    comp_Y = Y[datum.speaker != "Speaker1", :]
 
     # Run permutation and save results
     prod_corr = run_save_permutation_pr(args, prod_X, prod_Y, None)
@@ -347,58 +399,71 @@ def encoding_regression(args, datum, elec_signal, name):
     X, Y = build_XY(args, datum, elec_signal)
 
     # Split into production and comprehension
-    prod_X = X[datum.speaker == 'Speaker1', :]
-    comp_X = X[datum.speaker != 'Speaker1', :]
+    prod_X = X[datum.speaker == "Speaker1", :]
+    comp_X = X[datum.speaker != "Speaker1", :]
 
-    prod_Y = Y[datum.speaker == 'Speaker1', :]
-    comp_Y = Y[datum.speaker != 'Speaker1', :]
+    prod_Y = Y[datum.speaker == "Speaker1", :]
+    comp_Y = Y[datum.speaker != "Speaker1", :]
 
-    print(f'{args.sid} {name} Prod: {len(prod_X)} Comp: {len(comp_X)}')
+    print(f"{args.sid} {name} Prod: {len(prod_X)} Comp: {len(comp_X)}")
     args.current_elec = name
 
     # Run permutation and save results
-    trial_str = append_jobid_to_string(args, 'prod')
-    filename = os.path.join(output_dir, name + trial_str + '.csv')
-    run_save_permutation(args, prod_X, prod_Y, filename)
+    # trial_str = append_jobid_to_string(args, "prod")
+    # filename = os.path.join(output_dir, name + trial_str + ".csv")
+    # run_save_permutation(args, prod_X, prod_Y, filename)
 
-    trial_str = append_jobid_to_string(args, 'comp')
-    filename = os.path.join(output_dir, name + trial_str + '.csv')
-    run_save_permutation(args, comp_X, comp_Y, filename)
+    trial_str = append_jobid_to_string(args, "comp")
+    filename = os.path.join(output_dir, name + trial_str + ".csv")
+
+    if "fold" in datum.columns:
+        fold = datum.fold
+    else:
+        fold = None
+    run_save_permutation(args, comp_X, comp_Y, filename, fold)
 
     return
 
 
 def setup_environ(args):
-    """Update args with project specific directories and other flags
-    """
-    PICKLE_DIR = os.path.join(os.getcwd(), 'data', args.project_id,
-                              str(args.sid), 'pickles')
+    """Update args with project specific directories and other flags"""
+    PICKLE_DIR = os.path.join(
+        os.getcwd(), "data", args.project_id, str(args.sid), "pickles"
+    )
     path_dict = dict(PICKLE_DIR=PICKLE_DIR)
 
-    stra = 'cnxt_' + str(args.context_length)
-    if args.emb_type == 'glove50':
-        stra = ''
+    stra = "cnxt_" + str(args.context_length)
+    if args.emb_type == "glove50":
+        stra = ""
         args.layer_idx = 1
 
     # TODO make an arg
-    zeroshot = ''
-    # zeroshot = '_0shot'  # 
-    # zeroshot = '_0shot_new'  # 
+    zeroshot = ""
+    # zeroshot = '_0shot'  #
+    # zeroshot = '_0shot_new'  #
     # zeroshot = '_0shot_bbd'  # bobbi's datum
 
-    args.emb_file = '_'.join([
-        str(args.sid), args.pkl_identifier, args.emb_type, stra,
-        f'layer_{args.layer_idx:02d}', f'embeddings{zeroshot}.pkl'
-    ])
-    args.load_emb_file = args.emb_file.replace('__', '_')
+    args.emb_file = "_".join(
+        [
+            str(args.sid),
+            args.pkl_identifier,
+            args.emb_type,
+            stra,
+            f"layer_{args.layer_idx:02d}",
+            f"embeddings{zeroshot}.pkl",
+        ]
+    )
+    args.load_emb_file = args.emb_file.replace("__", "_")
 
-    args.signal_file = '_'.join(
-        [str(args.sid), args.pkl_identifier, 'signal.pkl'])
-    args.electrode_file = '_'.join([str(args.sid), 'electrode_names.pkl'])
-    args.stitch_file = '_'.join(
-        [str(args.sid), args.pkl_identifier, 'stitch_index.pkl'])
+    args.signal_file = "_".join(
+        [str(args.sid), args.pkl_identifier, "signal.pkl"]
+    )
+    args.electrode_file = "_".join([str(args.sid), "electrode_names.pkl"])
+    args.stitch_file = "_".join(
+        [str(args.sid), args.pkl_identifier, "stitch_index.pkl"]
+    )
 
-    args.output_dir = os.path.join(os.getcwd(), 'results')
+    args.output_dir = os.path.join(os.getcwd(), "results")
     args.full_output_dir = create_output_directory(args)
 
     vars(args).update(path_dict)
@@ -415,10 +480,10 @@ def append_jobid_to_string(args, speech_str):
     Returns:
         string: concatenated string
     """
-    speech_str = '_' + speech_str
+    speech_str = "_" + speech_str
 
     if args.job_id:
-        trial_str = '_'.join([speech_str, f'{args.job_id:02d}'])
+        trial_str = "_".join([speech_str, f"{args.job_id:02d}"])
     else:
         trial_str = speech_str
 

@@ -11,13 +11,20 @@ from tfsenc_parser import parse_arguments
 from tfsenc_pca import run_pca
 from tfsenc_phase_shuffle import phase_randomize_1d
 from tfsenc_read_datum import read_datum
-from tfsenc_utils import (append_jobid_to_string, create_output_directory,
-                          encoding_regression, encoding_regression_pr,
-                          load_header, setup_environ)
+from tfsenc_utils import (
+    append_jobid_to_string,
+    create_output_directory,
+    encoding_regression,
+    encoding_regression_pr,
+    load_header,
+    setup_environ,
+)
 from utils import load_pickle, main_timer, write_config
 
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import PolynomialFeatures
+from sklearn.model_selection import KFold
+import pickle
 
 
 def trim_signal(signal):
@@ -36,18 +43,17 @@ def trim_signal(signal):
 
 
 def load_electrode_data(args, elec_id):
-    '''Loads specific electrodes mat files
-    '''
-    if args.project_id == 'tfs':
-        DATA_DIR = '/projects/HASSON/247/data/conversations-car'
-        process_flag = 'preprocessed'
-    elif args.project_id == 'podcast':
-        DATA_DIR = '/projects/HASSON/247/data/podcast-data'
-        process_flag = 'preprocessed_all'
+    """Loads specific electrodes mat files"""
+    if args.project_id == "tfs":
+        DATA_DIR = "/projects/HASSON/247/data/conversations-car"
+        process_flag = "preprocessed"
+    elif args.project_id == "podcast":
+        DATA_DIR = "/projects/HASSON/247/data/podcast-data"
+        process_flag = "preprocessed_all"
     else:
-        raise Exception('Invalid Project ID')
+        raise Exception("Invalid Project ID")
 
-    convos = sorted(glob.glob(os.path.join(DATA_DIR, str(args.sid), '*')))
+    convos = sorted(glob.glob(os.path.join(DATA_DIR, str(args.sid), "*")))
 
     all_signal = []
     for convo_id, convo in enumerate(convos, 1):
@@ -56,9 +62,10 @@ def load_electrode_data(args, elec_id):
             continue
 
         file = glob.glob(
-            os.path.join(convo, process_flag, '*_' + str(elec_id) + '.mat'))[0]
+            os.path.join(convo, process_flag, "*_" + str(elec_id) + ".mat")
+        )[0]
 
-        mat_signal = loadmat(file)['p1st']
+        mat_signal = loadmat(file)["p1st"]
         mat_signal = mat_signal.reshape(-1, 1)
 
         # mat_signal = trim_signal(mat_signal)
@@ -67,7 +74,7 @@ def load_electrode_data(args, elec_id):
             continue
         all_signal.append(mat_signal)
 
-    if args.project_id == 'tfs':
+    if args.project_id == "tfs":
         elec_signal = np.vstack(all_signal)
     else:
         elec_signal = np.array(all_signal)
@@ -76,23 +83,23 @@ def load_electrode_data(args, elec_id):
 
 
 def process_datum(args, df):
-    df['is_nan'] = df['embeddings'].apply(lambda x: np.isnan(x).all())
+    df["is_nan"] = df["embeddings"].apply(lambda x: np.isnan(x).all())
 
     # drop empty embeddings
-    df = df[~df['is_nan']]
+    df = df[~df["is_nan"]]
 
     # use columns where token is root
-    if 'gpt2-xl' in [args.align_with, args.emb_type]:
-        df = df[df['gpt2-xl_token_is_root']]
-    elif 'bert' in [args.align_with, args.emb_type]:
-        df = df[df['bert_token_is_root']]
+    if "gpt2-xl" in [args.align_with, args.emb_type]:
+        df = df[df["gpt2-xl_token_is_root"]]
+    elif "bert" in [args.align_with, args.emb_type]:
+        df = df[df["bert_token_is_root"]]
     else:
         pass
 
-    df = df[~df['glove50_embeddings'].isna()]
+    df = df[~df["glove50_embeddings"].isna()]
 
-    if args.emb_type == 'glove50':
-        df['embeddings'] = df['glove50_embeddings']
+    if args.emb_type == "glove50":
+        df["embeddings"] = df["glove50_embeddings"]
 
     return df
 
@@ -100,8 +107,11 @@ def process_datum(args, df):
 def load_processed_datum(args):
     conversations = sorted(
         glob.glob(
-            os.path.join(os.getcwd(), 'data', str(args.sid), 'conv_embeddings',
-                         '*')))
+            os.path.join(
+                os.getcwd(), "data", str(args.sid), "conv_embeddings", "*"
+            )
+        )
+    )
     all_datums = []
     for conversation in conversations:
         datum = load_pickle(conversation)
@@ -115,8 +125,7 @@ def load_processed_datum(args):
 
 
 def process_subjects(args):
-    """Run encoding on particular subject (requires specifying electrodes)
-    """
+    """Run encoding on particular subject (requires specifying electrodes)"""
     # trimmed_signal = trimmed_signal_dict['trimmed_signal']
 
     # if args.electrodes:
@@ -131,8 +140,15 @@ def process_subjects(args):
     if args.electrodes:
         electrode_info = {
             key: next(
-                iter(df.loc[(df.subject == str(args.sid)) &
-                            (df.electrode_id == key), 'electrode_name']), None)
+                iter(
+                    df.loc[
+                        (df.subject == str(args.sid))
+                        & (df.electrode_id == key),
+                        "electrode_name",
+                    ]
+                ),
+                None,
+            )
             for key in args.electrodes
         }
 
@@ -154,43 +170,51 @@ def process_subjects(args):
 
 
 def process_sig_electrodes(args, datum):
-    """Run encoding on select significant elctrodes specified by a file
-    """
+    """Run encoding on select significant elctrodes specified by a file"""
     # Read in the significant electrodes
     sig_elec_file = os.path.join(
-        os.path.join(os.getcwd(), 'data', args.sig_elec_file))
+        os.path.join(os.getcwd(), "data", args.sig_elec_file)
+    )
     sig_elec_list = pd.read_csv(sig_elec_file)
 
     # Loop over each electrode
     for subject, elec_name in sig_elec_list.itertuples(index=False):
 
         assert isinstance(subject, int)
-        CONV_DIR = '/projects/HASSON/247/data/conversations'
-        if args.project_id == 'podcast':
-            CONV_DIR = '/projects/HASSON/247/data/podcast'
-        BRAIN_DIR_STR = 'preprocessed_all'
+        CONV_DIR = "/projects/HASSON/247/data/conversations"
+        if args.project_id == "podcast":
+            CONV_DIR = "/projects/HASSON/247/data/podcast"
+        BRAIN_DIR_STR = "preprocessed_all"
 
-        fname = os.path.join(CONV_DIR, 'NY' + str(subject) + '*')
+        fname = os.path.join(
+            CONV_DIR, "NY" + str(subject) + "*" + "conversation1"
+        )
         subject_id = glob.glob(fname)
-        assert len(subject_id), f'No data found in {fname}'
+        assert len(subject_id), f"No data found in {fname}"
         subject_id = os.path.basename(subject_id[0])
 
         # Read subject's header
         labels = load_header(CONV_DIR, subject_id)
         if labels is None:
             continue
-        assert labels is not None, 'Missing header'
+        assert labels is not None, "Missing header"
         electrode_num = labels.index(elec_name) + 1
 
         # Read electrode data
         brain_dir = os.path.join(CONV_DIR, subject_id, BRAIN_DIR_STR)
         electrode_file = os.path.join(
-            brain_dir, ''.join([
-                subject_id, '_electrode_preprocess_file_',
-                str(electrode_num), '.mat'
-            ]))
+            brain_dir,
+            "".join(
+                [
+                    subject_id,
+                    "_electrode_preprocess_file_",
+                    str(electrode_num),
+                    ".mat",
+                ]
+            ),
+        )
         try:
-            elec_signal = loadmat(electrode_file)['p1st']
+            elec_signal = loadmat(electrode_file)["p1st"]
             elec_signal = elec_signal.reshape(-1, 1)
 
             # NOTE - detrend
@@ -206,12 +230,13 @@ def process_sig_electrodes(args, datum):
             elec_signal = y - trend
 
         except FileNotFoundError:
-            print(f'Missing: {electrode_file}')
+            print(f"Missing: {electrode_file}")
             continue
 
         # Perform encoding/regression
-        encoding_regression(args, datum, elec_signal,
-                            str(subject) + '_' + elec_name)
+        encoding_regression(
+            args, datum, elec_signal, str(subject) + "_" + elec_name
+        )
 
     return
 
@@ -220,8 +245,9 @@ def dumdum1(iter_idx, args, datum, signal, name):
     seed = iter_idx + (os.getenv("SLURM_ARRAY_TASk_ID", 0) * 10000)
     np.random.seed(seed)
     new_signal = phase_randomize_1d(signal)
-    (prod_corr, comp_corr) = encoding_regression_pr(args, datum, new_signal,
-                                                    name)
+    (prod_corr, comp_corr) = encoding_regression_pr(
+        args, datum, new_signal, name
+    )
 
     return (prod_corr, comp_corr)
 
@@ -232,8 +258,8 @@ def write_output(args, output_mat, name, output_str):
 
     if all(output_mat):
         trial_str = append_jobid_to_string(args, output_str)
-        filename = os.path.join(output_dir, name + trial_str + '.csv')
-        with open(filename, 'w') as csvfile:
+        filename = os.path.join(output_dir, name + trial_str + ".csv")
+        with open(filename, "w") as csvfile:
             csvwriter = csv.writer(csvfile)
             csvwriter.writerows(output_mat)
 
@@ -244,7 +270,7 @@ def this_is_where_you_perform_regression(args, electrode_info, datum):
     for elec_id, elec_name in electrode_info.items():
 
         if elec_name is None:
-            print(f'Electrode ID {elec_id} does not exist')
+            print(f"Electrode ID {elec_id} does not exist")
             continue
 
         args.current_elec = elec_name
@@ -252,27 +278,44 @@ def this_is_where_you_perform_regression(args, electrode_info, datum):
 
         # Perform encoding/regression
         if args.phase_shuffle:
-            if args.project_id == 'podcast':
+            if args.project_id == "podcast":
                 with Pool() as pool:
                     corr = pool.map(
-                        partial(dumdum1,
-                                args=args,
-                                datum=datum,
-                                signal=elec_signal,
-                                name=elec_name), range(args.npermutations))
+                        partial(
+                            dumdum1,
+                            args=args,
+                            datum=datum,
+                            signal=elec_signal,
+                            name=elec_name,
+                        ),
+                        range(args.npermutations),
+                    )
             else:
                 corr = []
                 for i in range(args.npermutations):
-                    corr.append(dumdum1(i, args, datum, elec_signal,
-                                        elec_name))
+                    corr.append(dumdum1(i, args, datum, elec_signal, elec_name))
 
             prod_corr, comp_corr = map(list, zip(*corr))
-            write_output(args, prod_corr, elec_name, 'prod')
-            write_output(args, comp_corr, elec_name, 'comp')
+            write_output(args, prod_corr, elec_name, "prod")
+            write_output(args, comp_corr, elec_name, "comp")
         else:
             encoding_regression(args, datum, elec_signal, elec_name)
 
     return None
+
+
+def zeroshot_datum(df):
+    dfz = (
+        df[["word", "adjusted_onset"]]
+        .groupby("word")
+        .apply(lambda x: x.sample(1, random_state=42))
+    )
+    dfz.reset_index(level=1, inplace=True)
+    dfz.sort_values("adjusted_onset", inplace=True)
+    df = df.loc[dfz.level_1.values]
+    print(f"Zeroshot created datum with {len(df)} words")
+
+    return df
 
 
 @main_timer
@@ -288,7 +331,6 @@ def main():
 
     # Locate and read datum
     datum = read_datum(args)
-
     # # Convert Bobbi datum to pickle
     # if False:
     #     dirn = '/scratch/gpfs/zzada/247-pickling/'
@@ -308,36 +350,57 @@ def main():
     #     print(f'PCAing to {args.pca_to}')
     #     datum = run_pca(args, datum)
 
-
     # Choose zero shot uniqueness. PCA all before selecting unique words
     # Note - make sure to comment out the PCA above
     if True:
         df = datum
 
         import string
-        df['word'] = df.word.str.lower().str.strip(string.punctuation)
+
+        df["word"] = df.word.str.lower().str.strip(string.punctuation)
 
         nans = df.embeddings.apply(lambda x: np.isnan(x).any())
-        same = df.token2word.str.lower().str.strip() == df.word.str.lower().str.strip()
         notnon = df.is_nonword == 0
-
-        df2 = df[same & ~nans & notnon].copy()
-        df2.reset_index(drop=True, inplace=True)
+        if "gpt2" in args.emb_type:
+            same = (
+                df.token2word.str.lower().str.strip()
+                == df.word.str.lower().str.strip()
+            )
+            df2 = df[same & ~nans & notnon].copy()
+        else:
+            df2 = df[~nans & notnon].copy()
+        # df2.reset_index(drop=True, inplace=True)
 
         # circular shift
         # df2['adjusted_onset'] = np.roll(df2.onset.values.copy(), len(df2) // 2)
-
         assert not df2.adjusted_onset.isna().any()
 
-        df3 = df2[['word', 'adjusted_onset']].copy()
-        dfz = df3.groupby('word').apply(lambda x: x.sample(1, random_state=42))
-        dfz.reset_index(level=1, inplace=True)
-        dfz.sort_values('adjusted_onset', inplace=True)
-        dfzz = df2.iloc[dfz.level_1.values]
-        print(dfzz.shape)
-
+        # df3 = df2[['word', 'adjusted_onset']].copy()
+        # dfz = df3.groupby('word').apply(lambda x: x.sample(1, random_state=42))
+        # dfz.reset_index(level=1, inplace=True)
+        # dfz.sort_values('adjusted_onset', inplace=True)
+        # dfzz = df2.iloc[dfz.level_1.values]
+        # print(dfzz.shape)
+        dfzz = zeroshot_datum(df2)
         datum = dfzz
 
+    saving = False
+    if saving:
+        breakpoint()
+        skf = KFold(n_splits=10, shuffle=False)
+        folds = [t[1] for t in skf.split(np.arange(len(dfzz)))]
+        fold_cat = np.zeros(len(dfzz))
+        for i in range(0, len(folds)):
+            for row in folds[i]:
+                fold_cat[row] = i  # turns into fold category
+        dfzz.loc[:, "fold"] = fold_cat
+
+        # saving fold info
+        new_datum = dfzz.loc[:, ("word", "onset", "fold")]
+        filename = "777_full_labels_fold.pkl"
+        with open(filename, "wb") as fh:
+            pickle.dump(new_datum, fh)
+        breakpoint()
 
     # Processing significant electrodes or individual subjects
     if args.sig_elec_file:
