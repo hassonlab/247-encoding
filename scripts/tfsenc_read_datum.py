@@ -4,6 +4,7 @@ import string
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import normalize
+from sklearn.decomposition import PCA
 from utils import load_pickle
 
 # import gensim.downloader as api
@@ -153,7 +154,7 @@ def filter_datum(args, df):
     # filter based on align with arguments
     for model in args.align_with:
         if model == "glove50":
-            model = "glove" ## HACK
+            model = "glove"  ## HACK
             if args.emb_type != "glove50":  # when aligning with glove
                 common = (
                     common & df[f"{args.emb_type}_token_is_root"]
@@ -532,6 +533,46 @@ def mod_datum(args, datum):
     return datum
 
 
+def run_pca(args, df):
+    pca_to = args.pca_to
+    pca = PCA(n_components=pca_to, svd_solver="auto", whiten=True)
+
+    df_emb = df["embeddings"]
+    embs = np.vstack(df_emb.values)
+
+    # assert embs.shape[1] % 12 == 0, "Something wrong with emb shape"
+
+    if "-" in args.window_num:  # range
+        start_win = args.window_num[: args.window_num.find("-")]
+        end_win = args.window_num[args.window_num.find("-") + 1 :]
+    else:  # onewindow
+        start_win = end_win = args.window_num
+    assert start_win.isdigit()
+    assert end_win.isdigit()
+    emb_dim = 384  ## HACK whisper-tiny.en
+
+    if "full-en-offset" in args.base_df_path:
+        print(f"Taking win {start_win} to {end_win} from the back")
+        start_idx = int(end_win) * emb_dim * -1
+        end_idx = (int(start_win) - 1) * emb_dim * -1
+        if start_win == "1":
+            embs = embs[:, start_idx:]
+        else:
+            embs = embs[:, start_idx:end_idx]
+    else:
+        print(f"Taking win {start_win} to {end_win}")
+        start_idx = (int(start_win) - 1) * emb_dim
+        end_idx = int(end_win) * emb_dim
+        embs = embs[:, start_idx:end_idx]
+    print(f"PCA from {embs.shape[1]} to {pca_to}")
+    pca_output = pca.fit_transform(embs)
+    print(f"PCA explained variance: {sum(pca.explained_variance_)}")
+    print(f"PCA explained variance ratio: {sum(pca.explained_variance_ratio_)}")
+    df["embeddings"] = pca_output.tolist()
+
+    return df
+
+
 def read_datum(args, stitch):
     """Load, process, and filter datum
 
@@ -545,8 +586,8 @@ def read_datum(args, stitch):
     emb_df = load_datum(args.emb_df_path)
     base_df = load_datum(args.base_df_path)
 
-    if "whisper" in args.emb_type: ## HACK
-        base_df = base_df.dropna(subset=["onset","offset"])
+    if "whisper" in args.emb_type:  ## HACK
+        base_df = base_df.dropna(subset=["onset", "offset"])
         assert len(base_df) == len(emb_df)
 
     df = pd.merge(
@@ -562,5 +603,10 @@ def read_datum(args, stitch):
 
     df = mod_datum(args, df)  # further filter datum based on datum_mod argument
     print(f"Datum final length: {len(df)}")
+
+    if args.project_id == "tfs" and len(df.embeddings.iloc[0]) >= 2000:  # emb dim too big
+        # HACK
+        print(f"Running early pca due to big embedding dimension")
+        df = run_pca(args, df)
 
     return df
