@@ -196,7 +196,7 @@ def parallel_encoding(args, electrode_info, datum, stitch_index, parallel=True):
     if parallel:
         print("Running all electrodes in parallel")
         summary_file = os.path.join(args.full_output_dir, "summary.csv")  # summary file
-        p = Pool(processes=get_cpu_count())  # multiprocessing
+        p = Pool(4)  # multiprocessing
         with open(summary_file, "w") as f:
             writer = csv.writer(f, delimiter=",", lineterminator="\r\n")
             writer.writerow(("sid", "electrode", "prod", "comp"))

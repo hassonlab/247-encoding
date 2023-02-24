@@ -152,10 +152,12 @@ def filter_datum(args, df):
 
     # filter based on align with arguments
     for model in args.align_with:
-        if model == "glove50" and args.emb_type != "glove50":  # when aligning with glove
-            common = (
-                common & df[f"{args.emb_type}_token_is_root"]
-            )  # also ensure word=token
+        if model == "glove50":
+            model = "glove" ## HACK
+            if args.emb_type != "glove50":  # when aligning with glove
+                common = (
+                    common & df[f"{args.emb_type}_token_is_root"]
+                )  # also ensure word=token
         print(f"Aligning with {model}")
         common = common & df[f"in_{model}"]
 
@@ -542,6 +544,10 @@ def read_datum(args, stitch):
     """
     emb_df = load_datum(args.emb_df_path)
     base_df = load_datum(args.base_df_path)
+
+    if "whisper" in args.emb_type: ## HACK
+        base_df = base_df.dropna(subset=["onset","offset"])
+        assert len(base_df) == len(emb_df)
 
     df = pd.merge(
         base_df, emb_df, left_index=True, right_index=True
