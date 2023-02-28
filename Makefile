@@ -104,6 +104,7 @@ ALIGN_WITH := blenderbot-small
 ALIGN_WITH := gpt2-xl
 ALIGN_WITH := glove50 gpt2-xl blenderbot-small
 ALIGN_WITH := $(EMB)
+ALIGN_WITH := 
 
 # Choose layer of embeddings to use
 # {1 for glove, 48 for gpt2, 8 for blenderbot encoder, 16 for blenderbot decoder}
@@ -128,6 +129,9 @@ WV := all
 # Choose whether to normalize the embeddings
 NM := l2
 # {l1 | l2 | max}
+
+# Choose windows for whisper-encoder (x: x-th window or x-y: x-th to y-th window)
+WN := 1
 
 # Choose the command to run: python runs locally, echo is for debugging, sbatch
 # is for running on SLURM all lags in parallel.
@@ -230,6 +234,7 @@ run-encoding:
 		--context-length $(CNXT_LEN) \
 		--align-with $(ALIGN_WITH) \
 		--window-size $(WS) \
+		--window-num $(WN) \
 		--word-value $(WV) \
 		--npermutations $(NPERM) \
 		--lags $(LAGS) \
@@ -250,7 +255,7 @@ run-encoding:
 
 run-encoding-layers:
 	mkdir -p logs
-	for context in $(CNXT_LEN); do\
+	for windows in $(WN); do\
 		for layer in $(LAYER_IDX); do\
 			$(CMD) scripts/$(FILE).py \
 				--project-id $(PRJCT_ID) \
@@ -263,6 +268,7 @@ run-encoding-layers:
 				--context-length $$context \
 				--align-with $(ALIGN_WITH) \
 				--window-size $(WS) \
+				--window-num $$windows \
 				--word-value $(WV) \
 				--npermutations $(NPERM) \
 				--lags $(LAGS) \
@@ -276,7 +282,7 @@ run-encoding-layers:
 				$(SH) \
 				$(PSH) \
 				--normalize $(NM)\
-				--output-parent-dir $(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-$(DM)-1024-$$layer \
+				--output-parent-dir $(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-$(DM)-$$windows-$$layer \
 				--output-prefix $(USR)-$(WS)ms-$(WV);\
 		done; \
 	done;
