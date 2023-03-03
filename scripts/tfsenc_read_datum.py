@@ -215,7 +215,7 @@ def mod_datum_by_preds(args, datum, emb_type):
         # second_datum = pd.concat([second_base_df, second_emb_df], axis=1)
         if args.emb_type == "glove50":
             second_datum = second_datum[
-                second_datum["gpt2-xl_token_is_root"] & second_datum["in_glove50"]
+                second_datum["gpt2-xl_token_is_root"] & second_datum["in_glove"]
             ]
         second_datum = second_datum.loc[
             :,
