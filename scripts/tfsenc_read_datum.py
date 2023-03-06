@@ -153,12 +153,10 @@ def filter_datum(args, df):
 
     # filter based on align with arguments
     for model in args.align_with:
-        if model == "glove50":
-            model = "glove"  ## HACK
-            if args.emb_type != "glove50":  # when aligning with glove
-                common = (
-                    common & df[f"{args.emb_type}_token_is_root"]
-                )  # also ensure word=token
+        if model == "glove50" and args.emb_type != "glove50":  # when aligning with glove
+            common = (
+                common & df[f"{args.emb_type}_token_is_root"]
+            )  # also ensure word=token
         print(f"Aligning with {model}")
         common = common & df[f"in_{model}"]
 
@@ -215,7 +213,7 @@ def mod_datum_by_preds(args, datum, emb_type):
         # second_datum = pd.concat([second_base_df, second_emb_df], axis=1)
         if args.emb_type == "glove50":
             second_datum = second_datum[
-                second_datum["gpt2-xl_token_is_root"] & second_datum["in_glove"]
+                second_datum["gpt2-xl_token_is_root"] & second_datum["in_glove50"]
             ]
         second_datum = second_datum.loc[
             :,
@@ -585,14 +583,19 @@ def read_datum(args, stitch):
     """
     emb_df = load_datum(args.emb_df_path)
     base_df = load_datum(args.base_df_path)
-
     if "whisper" in args.emb_type:  ## HACK
         base_df = base_df.dropna(subset=["onset", "offset"])
         assert len(base_df) == len(emb_df)
+    if len(emb_df) != len(base_df):
+        df = pd.merge(
+            base_df, emb_df, left_index=True, right_index=True
+        )  # TODO Needs testing (either bert_utterance or whisper)
+    else: # HACK until pickling is fixed
+        base_df.reset_index(
+            drop=False, inplace=True
+        )
+        df = pd.concat([base_df, emb_df], axis=1)
 
-    df = pd.merge(
-        base_df, emb_df, left_index=True, right_index=True
-    )  # TODO Needs testing (either bert_utterance or whisper)
     print(f"After loading: Datum loads with {len(df)} words")
 
     df = process_datum(args, df, stitch)
