@@ -1,6 +1,5 @@
 # e22 - rerran 10 folds, pc
 # e23 - same but 4s
-# if elec == '717_LGB79':
 
 import os
 import pickle
@@ -10,103 +9,98 @@ import matplotlib.pyplot as plt
 
 from multiprocessing import Pool
 
-from scipy.stats import zscore, pearsonr
+from scipy.stats import zscore
 from statsmodels.stats import multitest
+
 # from statsmodels.stats import stattools
 
-n_workers = 9
-nperms = 0
-pdir = '/scratch/gpfs/zzada/247-encoding/results/podcast/'
+n_workers = 4
+nperms = 5000
+pdir = "/scratch/gpfs/kw1166/0shot-encoding/results/podcast/"
 
-dirs = ['0shot-zz-podcast-full-777-gpt2-xl-e23/777/',
-        '0shot-zz-podcast-full-777-gpt2-xl-e23-sh/777/']
+dirs = [
+    "0shot-zz-podcast-full-777-gpt2-xl-e23/777/",
+    "0shot-zz-podcast-full-777-gpt2-xl-e23-sh/777/",
+]
 
 # dirs = ['0shot-zz-podcast-full-777-gpt2-xl-717l/777/']
 # dirs = ['0shot-zz-podcast-full-777-gpt2-xl-717lfdp/777/']
 # dirs = ['0shot-zz-podcast-full-777-gpt2-xl-717fdp/777/']
 # dirs = ['0shot-zz-podcast-full-777-gpt2-xl-717detrend/777/']
-dirs = ['0shot-zz-podcast-full-777-gpt2-xl-717ldp1/777/']
+dirs = ["0shot-zz-podcast-full-777-gpt2-xl-717ldp1/777/"]
 
-dirs = ['0shot-zz-podcast-full-777-gpt2-xl-polydet2/777/',]
-        # '0shot-zz-podcast-full-777-gpt2-xl-polydet2-sh/777/']
+dirs = [
+    "0shot-kw-podcast-full-777-gpt2-xl-fold-2/777/",
+    "0shot-kw-podcast-full-777-gpt2-xl-fold-2-sh/777/",
+]
 
+dirs = [
+    "0shot-kw-podcast-full-777-glove50-concat5-6/777/",
+    "0shot-kw-podcast-full-777-glove50-concat5-6-sh/777/",
+]
 
 # Create experiments from master list
-elecs = pd.read_csv('data/elec_masterlist.csv')
-cats = ['princeton_class', 'NYU_class']
+elecs = pd.read_csv("data/elec_masterlist.csv")
+cats = ["princeton_class", "NYU_class"]
 
-cats = ['NYU_class']
-subjects = [717, 798, 742, [717,798,742], [662,717,723,741,742,743,763,798]]
-rois = ['IFG', 'precentral', 'postcentral', 'STG']
-# rois = [['precentral', 'postcentral']]
-
-subjects = [[717, 798, 742]]
-rois = ['IFG']
-
-datum = pd.read_csv('zaid.csv')
-words = datum.word.tolist()
+cats = ["NYU_class"]
+subjects = [
+    717,
+    798,
+    742,
+    [717, 798, 742],
+    # [662, 717, 723, 741, 742, 743, 763, 798],
+]
+# subjects = [[717, 798, 742]]
+rois = ["IFG"]
+rois = ["IFG", "precentral", "postcentral", "STG"]
 
 experiments = {}
 for category in cats:
     for subject in subjects:
         for roi in rois:
-            name = ''
             if isinstance(subject, int):
                 crit = elecs.subject == subject
-                name += '_'.join([str(subject), category])
+                name = "_".join([str(subject), category, roi])
             elif isinstance(subject, list):
                 m = len(subject)
                 crit = elecs.subject.isin(subject)
-                name += '_'.join([f'all{m}', category])
-
-            if isinstance(roi, str):
-                crit &= (elecs[category] == roi)
-                name += '_' + roi
-            elif isinstance(roi, list):
-                crit &= elecs[category].isin(roi)
-                name += '_' + ''.join(r[:3] for r in roi) + str(len(roi))
-
+                name = "_".join([f"all{m}", category, roi])
+            crit &= elecs[category] == roi
             subdf = elecs[crit]
-            es = [str(x) + '_' + y for x, y in zip(subdf.subject, subdf.name)]
-            # es = subdf.name.tolist()
+            es = [str(x) + "_" + y for x, y in zip(subdf.subject, subdf.name)]
             if len(es):
                 experiments[name] = es
 
-custom = dirs[0].split('/')[0][-3:]
+custom = dirs[0].split("/")[0][-3:]
 print(custom)
-
-# experiments = {}
-# # experiments['717_NYU_class_2good'] = ['717_LGA10', '717_LGB79']
-# experiments['717_NYU_class_3good'] = ['717_LGA10', '717_LGB79', '717_LGB121']
-# experiments['717_NYU_class_4good'] = ['717_LGA10', '717_LGB79', '717_LGB121', '717_LGA38']
-# # 717 - 46
-
-name = 'all3_NYU_class_IFG'
-print(experiments.keys())
-elecs = experiments[name]
-print(len(elecs))
-experiments = {}
-k = 40
-for i in range(250):
-    experiments[f'{name}_{i}'] = np.random.choice(elecs, k, replace=False).tolist()
-outdir = f'results/sample{k}/'
-
-print(len(experiments), 'experiments')
+print(len(experiments), "experiments")
+if False:
+    # save experiments to different csvs
+    for experiment in experiments:
+        print(experiment, len(experiments[experiment]))
+        region_elecs = pd.DataFrame(experiments[experiment])
+        region_elecs[["subject", "electrode"]] = region_elecs[0].str.split(
+            "_", expand=True
+        )
+        region_elecs = region_elecs.loc[:, ("subject", "electrode")]
+        region_elecs.to_csv(f"{experiment}.csv", index=False)
+# if elec == '717_LGB79':
 
 
 def correlate(A, B, axis=0):
     """Calculate pearson correlation between two matricies.
 
-       axis = 0 correlates columns in A to columns in B
-       axis = 1 correlates rows in A to rows in B
+    axis = 0 correlates columns in A to columns in B
+    axis = 1 correlates rows in A to rows in B
     """
-    assert A.ndim == B.ndim, 'Matrices must have same number of dimensions'
-    assert A.shape == B.shape, 'Matrices must have same shape'
+    assert A.ndim == B.ndim, "Matrices must have same number of dimensions"
+    assert A.shape == B.shape, "Matrices must have same shape"
 
     A_mean = A.mean(axis=axis, keepdims=True)
     B_mean = B.mean(axis=axis, keepdims=True)
-    A_stddev = np.sum((A - A_mean)**2, axis=axis)
-    B_stddev = np.sum((B - B_mean)**2, axis=axis)
+    A_stddev = np.sum((A - A_mean) ** 2, axis=axis)
+    B_stddev = np.sum((B - B_mean) ** 2, axis=axis)
 
     num = np.sum((A - A_mean) * (B - B_mean), axis=axis)
     den = np.sqrt(A_stddev * B_stddev)
@@ -135,16 +129,14 @@ def paired_permutation(x, y, nperms):
     dist = np.zeros(nperms)
     for i in range(nperms):
         s = np.random.choice([1, -1], n)
-        dist[i] = np.mean(s * (x-y))
+        dist[i] = np.mean(s * (x - y))
 
     p_value = (truescore > dist).mean()
     return p_value
 
 
 def fdr(pvals):
-    _, pcor, _, _ = multitest.multipletests(pvals,
-                                        method='fdr_bh',
-                                        is_sorted=False)
+    _, pcor, _, _ = multitest.multipletests(pvals, method="fdr_bh", is_sorted=False)
     return pcor
 
 
@@ -153,9 +145,9 @@ def run_exp(experiment, elecs):
 
     dfs = []
     fig, ax = plt.subplots(figsize=(8, 6))
-    ax.axvline(0, ls='-', c='black', alpha=0.1)
-    ax.axhline(0, ls='-', c='black', alpha=0.1)
-    ax.set(xlabel='Lag (s)', ylabel='Correlation (r+se)')
+    ax.axvline(0, ls="-", c="black", alpha=0.1)
+    ax.axhline(0, ls="-", c="black", alpha=0.1)
+    ax.set(xlabel="Lag (s)", ylabel="Correlation (r+se)")
     # ax.set_ylim([-0.05, 0.25])
 
     for i, resultdir in enumerate(dirs):
@@ -169,20 +161,21 @@ def run_exp(experiment, elecs):
             if pd.isna(elec):
                 continue
             # filename = pdir + resultdir + elec[2:5] + '_' + elec[30:] + '.pkl'
-            filename = pdir + resultdir + elec + '.pkl'
+            filename = pdir + resultdir + elec + ".pkl"
             if not os.path.isfile(filename):
-                # print(filename, 'is not found')
+                print(filename, "is not found")
                 continue
-            with open(filename, 'rb') as f:
+            with open(filename, "rb") as f:
+                # print(f"Loading{filename}")
                 data = pickle.load(f)
-                lags = data['lags']
-                signal.append(data['Y_signal'])
-                pred_signal.append(data['Yhat_signal'])
-                nn_signal.append(data['Yhat_nn_signal'])
+                lags = data["lags"]
+                signal.append(data["Y_signal"])
+                pred_signal.append(data["Yhat_signal"])
+                nn_signal.append(data["Yhat_nn_signal"])
 
         if len(signal) == 0:
-            print('None of the electrodes were found')
-            return
+            print("None of the electrodes were found")
+            break
 
         signal = np.stack(signal, axis=-1)  # n_words x n_lags x n_elecs
         pred_signal = np.stack(pred_signal, axis=-1)
@@ -194,9 +187,9 @@ def run_exp(experiment, elecs):
         acdw = []
 
         for lag in range(signal.shape[1]):
-            A = signal[:,lag,:]      # n_words x n_elecs
-            B = pred_signal[:,lag,:] # n_words x n_elecs
-            C = nn_signal[:,lag,:] # n_words x n_elecs
+            A = signal[:, lag, :]  # n_words x n_elecs
+            B = pred_signal[:, lag, :]  # n_words x n_elecs
+            C = nn_signal[:, lag, :]  # n_words x n_elecs
             # acdw.append(stattools.durbin_watson(A - B, axis=0).mean())
             A = zscore(A, axis=0)
             B = zscore(B, axis=0)
@@ -219,40 +212,34 @@ def run_exp(experiment, elecs):
         xaxis = lags
         mean = np.asarray(corrs)
         err = np.asarray(sems)
-        col = 'blue' if i == 0 else 'gray'
+        col = "blue" if i == 0 else "gray"
         ax.plot(xaxis, mean, color=col)
         ax.fill_between(xaxis, mean - err, mean + err, alpha=0.1, color=col)
 
         corrs = np.vstack(rawcorr)
         corrs2 = np.vstack(rawcorr_nn)
 
-        # Do per word significance checking
-        # besti = mean.argmax()
-        # A = zscore(signal[:, besti, :], 0)
-        # B = zscore(pred_signal[:, besti, :], 0)
-        # rps = [pearsonr(A[j], B[j]) for j in range(len(A))]
-        # rs, ps = list(zip(*rps))
-        # qs = fdr(ps)
-        # df = pd.DataFrame({'word': words, 'r': rs, 'p': ps, 'q': qs, 'lag': lags[besti]})
-        # df.sort_values('q', inplace=True)
-        # df.to_csv(f'results/figures/0shot-dat-{custom}-{experiment}-n_{nelecs}-words.csv')
-        # break
-
         df = pd.DataFrame(corrs.T, columns=lags)
-        df.insert(0, 'type', 'actual' if i == 0 else 'shuffle')
+        df.insert(0, "type", "actual" if i == 0 else "shuffle")
         dfs.append(df)
 
         if i == 0:
             mean_nn = np.asarray(corrs_nn)
             err_nn = np.asarray(sems_nn)
-            ax.plot(xaxis, mean_nn, color='red')
-            ax.fill_between(xaxis, mean_nn - err_nn, mean_nn + err_nn, alpha=0.1, color='red')
+            ax.plot(xaxis, mean_nn, color="red")
+            ax.fill_between(
+                xaxis,
+                mean_nn - err_nn,
+                mean_nn + err_nn,
+                alpha=0.1,
+                color="red",
+            )
 
             df = pd.DataFrame(corrs2.T, columns=lags)
-            df.insert(0, 'type', 'near_neighbor')
+            df.insert(0, "type", "near_neighbor")
             dfs.append(df)
 
-        ax.set_title(f'{experiment} | N={nelecs}')
+        ax.set_title(f"{experiment} | N={nelecs}")
 
         if i == 0 and nperms > 0:
             # Calculate max of correlation significance
@@ -270,19 +257,26 @@ def run_exp(experiment, elecs):
                         minP = sigSig[gg].min()
                         ax.axhline(minP)
 
-            pvals = [paired_permutation(corrs2[i], corrs[i], nperms) for i in range(len(lags))]
+            pvals = [
+                paired_permutation(corrs2[i], corrs[i], nperms)
+                for i in range(len(lags))
+            ]
             pcorr = fdr(pvals)
             issig = (m > minP) & (pcorr < 0.01)
             siglags = issig.nonzero()[0]
-            yheight = ax.get_ylim()[1] - .005
-            ax.scatter(lags[siglags], [yheight]*len(siglags), marker='*', color='blue')
+            yheight = ax.get_ylim()[1] - 0.005
+            ax.scatter(
+                lags[siglags],
+                [yheight] * len(siglags),
+                marker="*",
+                color="blue",
+            )
 
-            dfs[0].insert(1, 'threshold', minP)
+            dfs[0].insert(1, "threshold", minP)
             df = pd.DataFrame(issig).T.set_axis(lags, axis=1)
-            df.insert(0, 'type', 'is_significant')
+            df.insert(0, "type", "is_significant")
             dfs.append(df)
 
-        # Ploot each electrode separately
         # # breakpoint()
         # from matplotlib.backends.backend_pdf import PdfPages
         # pdf = PdfPages('tmp.pdf')
@@ -310,16 +304,12 @@ def run_exp(experiment, elecs):
         # pdf.close()
 
     df = pd.concat(dfs)
-    df.to_csv(f'{outdir}/0shot-dat-{custom}-{experiment}-n_{nelecs}.csv')
+    df.to_csv(f"results/figures/0shot-dat-{custom}-{experiment}-n_{nelecs}.csv")
 
-    # fig.savefig(f'{outdir}/0shot-fig-{custom}-{experiment}-n_{nelecs}.png')
+    fig.savefig(f"results/figures/0shot-fig-{custom}-{experiment}-n_{nelecs}.png")
     plt.close()
 
 
-if __name__ == '__main__':
-    if n_workers > 1:
-        with Pool(min(n_workers, len(experiments))) as p:
-            p.starmap(run_exp, experiments.items())
-    else:
-        for kv in experiments.items():
-            run_exp(*kv)
+if __name__ == "__main__":
+    with Pool(min(n_workers, len(experiments))) as p:
+        p.starmap(run_exp, experiments.items())

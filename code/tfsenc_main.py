@@ -107,9 +107,7 @@ def process_datum(args, df):
 def load_processed_datum(args):
     conversations = sorted(
         glob.glob(
-            os.path.join(
-                os.getcwd(), "data", str(args.sid), "conv_embeddings", "*"
-            )
+            os.path.join(os.getcwd(), "data", str(args.sid), "conv_embeddings", "*")
         )
     )
     all_datums = []
@@ -142,8 +140,7 @@ def process_subjects(args):
             key: next(
                 iter(
                     df.loc[
-                        (df.subject == str(args.sid))
-                        & (df.electrode_id == key),
+                        (df.subject == str(args.sid)) & (df.electrode_id == key),
                         "electrode_name",
                     ]
                 ),
@@ -172,9 +169,7 @@ def process_subjects(args):
 def process_sig_electrodes(args, datum):
     """Run encoding on select significant elctrodes specified by a file"""
     # Read in the significant electrodes
-    sig_elec_file = os.path.join(
-        os.path.join(os.getcwd(), "data", args.sig_elec_file)
-    )
+    sig_elec_file = os.path.join(os.path.join(os.getcwd(), "data", args.sig_elec_file))
     sig_elec_list = pd.read_csv(sig_elec_file)
 
     # Loop over each electrode
@@ -186,9 +181,7 @@ def process_sig_electrodes(args, datum):
             CONV_DIR = "/projects/HASSON/247/data/podcast"
         BRAIN_DIR_STR = "preprocessed_all"
 
-        fname = os.path.join(
-            CONV_DIR, "NY" + str(subject) + "*" + "conversation1"
-        )
+        fname = os.path.join(CONV_DIR, "NY" + str(subject) + "*" + "conversation1")
         subject_id = glob.glob(fname)
         assert len(subject_id), f"No data found in {fname}"
         subject_id = os.path.basename(subject_id[0])
@@ -234,9 +227,7 @@ def process_sig_electrodes(args, datum):
             continue
 
         # Perform encoding/regression
-        encoding_regression(
-            args, datum, elec_signal, str(subject) + "_" + elec_name
-        )
+        encoding_regression(args, datum, elec_signal, str(subject) + "_" + elec_name)
 
     return
 
@@ -245,9 +236,7 @@ def dumdum1(iter_idx, args, datum, signal, name):
     seed = iter_idx + (os.getenv("SLURM_ARRAY_TASk_ID", 0) * 10000)
     np.random.seed(seed)
     new_signal = phase_randomize_1d(signal)
-    (prod_corr, comp_corr) = encoding_regression_pr(
-        args, datum, new_signal, name
-    )
+    (prod_corr, comp_corr) = encoding_regression_pr(args, datum, new_signal, name)
 
     return (prod_corr, comp_corr)
 
@@ -331,6 +320,7 @@ def main():
 
     # Locate and read datum
     datum = read_datum(args)
+    datum = datum[datum.adjusted_onset > 0]
     # # Convert Bobbi datum to pickle
     # if False:
     #     dirn = '/scratch/gpfs/zzada/247-pickling/'
@@ -363,8 +353,7 @@ def main():
         notnon = df.is_nonword == 0
         if "gpt2" in args.emb_type:
             same = (
-                df.token2word.str.lower().str.strip()
-                == df.word.str.lower().str.strip()
+                df.token2word.str.lower().str.strip() == df.word.str.lower().str.strip()
             )
             df2 = df[same & ~nans & notnon].copy()
         else:
@@ -382,11 +371,10 @@ def main():
         # dfzz = df2.iloc[dfz.level_1.values]
         # print(dfzz.shape)
         dfzz = zeroshot_datum(df2)
-        datum = dfzz
 
     saving = False
-    if saving:
-        breakpoint()
+    if "glove50" in args.emb_type and "concat" in args.output_parent_dir:
+        # getting the folds
         skf = KFold(n_splits=10, shuffle=False)
         folds = [t[1] for t in skf.split(np.arange(len(dfzz)))]
         fold_cat = np.zeros(len(dfzz))
@@ -395,12 +383,25 @@ def main():
                 fold_cat[row] = i  # turns into fold category
         dfzz.loc[:, "fold"] = fold_cat
 
-        # saving fold info
-        new_datum = dfzz.loc[:, ("word", "onset", "fold")]
-        filename = "777_full_labels_fold.pkl"
-        with open(filename, "wb") as fh:
-            pickle.dump(new_datum, fh)
-        breakpoint()
+        # getting rid of words with context from previous folds
+        prev_index = pd.DataFrame(dfzz.groupby(dfzz.fold + 1)["index"].max())
+        prev_index.reset_index(inplace=True)
+        prev_index.rename(columns={"index": "prev_fold_max"}, inplace=True)
+        prev_index.loc[9, "fold"] = 0
+        prev_index.loc[9, "prev_fold_max"] = -10
+        dfzz = dfzz.merge(prev_index, left_on="fold", right_on="fold")
+        dfzz = dfzz[dfzz["index"] - 10 > dfzz.prev_fold_max]
+        dfzz.drop(columns=["prev_fold_max"], inplace=True)
+
+        if saving:
+            # saving fold info for gpt2 emb generation
+            new_datum = dfzz.loc[:, ("word", "onset", "fold")]
+            filename = "777_full_labels_fold.pkl"
+            with open(filename, "wb") as fh:
+                pickle.dump(new_datum, fh)
+            breakpoint()
+
+    datum = dfzz
 
     # Processing significant electrodes or individual subjects
     if args.sig_elec_file:

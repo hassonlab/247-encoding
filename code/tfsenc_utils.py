@@ -119,18 +119,25 @@ def cv_lm_003(
         foldYhat = model.predict(Xtes)
         YHAT[test_index, :] = foldYhat.reshape(-1, nChans)
 
+        # for glove concatenation (only nearestneighbors on the last 50d)
+        Xtran = Xtra[:, -50:]
+        Xtesn = Xtes[:, -50:]
+        Xtesc = Xtes[:, :-50]
+
         if near_neighbor:
             nbrs = NearestNeighbors(n_neighbors=1, metric="cosine")
-            nbrs.fit(Xtra)
-            _, I = nbrs.kneighbors(Xtes)
-            XtesNN = Xtra[I].squeeze()
+            nbrs.fit(Xtran)
+            _, I = nbrs.kneighbors(Xtesn)
+            Xtesn = Xtran[I].squeeze()
+            XtesNN = np.hstack((Xtesc,Xtesn))
             YHAT_NN[test_index, :] = model.predict(XtesNN)
 
         if near_neighbor_test:
             nbrs = NearestNeighbors(n_neighbors=1, metric="cosine")
-            nbrs.fit(Xtes)
+            nbrs.fit(Xtesn)
             _, I = nbrs.kneighbors()
-            XtesNNT = Xtes[I].squeeze()
+            Xtesn = Xtesn[I].squeeze()
+            XtesNNT = np.hstack((Xtesc,Xtesn))
             YHAT_NNT[test_index, :] = model.predict(XtesNNT)
 
     return YHAT, YHAT_NN, YHAT_NNT, YTES
@@ -148,9 +155,7 @@ def fit_model(X, y):
 
 
 @jit(nopython=True)
-def build_Y(
-    onsets, convo_onsets, convo_offsets, brain_signal, lags, window_size
-):
+def build_Y(onsets, convo_onsets, convo_offsets, brain_signal, lags, window_size):
     """[summary]
 
     Args:
@@ -455,9 +460,7 @@ def setup_environ(args):
     )
     args.load_emb_file = args.emb_file.replace("__", "_")
 
-    args.signal_file = "_".join(
-        [str(args.sid), args.pkl_identifier, "signal.pkl"]
-    )
+    args.signal_file = "_".join([str(args.sid), args.pkl_identifier, "signal.pkl"])
     args.electrode_file = "_".join([str(args.sid), "electrode_names.pkl"])
     args.stitch_file = "_".join(
         [str(args.sid), args.pkl_identifier, "stitch_index.pkl"]

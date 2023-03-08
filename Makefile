@@ -12,9 +12,9 @@ PRJCT_ID := podcast
 # {podcast | tfs}
 
 # 625 Electrode IDs
-SID := 625
-E_LIST := $(shell seq 1 105)
-E_LIST := 11 33 43
+# SID := 625
+# E_LIST := $(shell seq 1 105)
+# E_LIST := 11 33 43
 
 # Sig file will override whatever electrodes you choose
 SIG_FN := 
@@ -33,7 +33,7 @@ PKL_IDENTIFIER := full
 # podcast electeode IDs
 SID := 777
 # SID := 661
-# E_LIST :=  $(shell seq 1 115)
+E_LIST :=  $(shell seq 1 115)
 # SID := 662
 # E_LIST :=  $(shell seq 1 100)
 # SID := 717
@@ -55,7 +55,8 @@ SIG_FN := --sig-elec-file pod2.csv
 SIG_FN := --sig-elec-file pod-micro-ifg.csv
 SIG_FN := --sig-elec-file 717-all.csv
 SIG_FN := --sig-elec-file 717-ifg.csv
-SIG_FN := --sig-elec-file podcast-all.csv
+SIG_FN := --sig-elec-file podcast_all.csv
+# SIG_FN := --sig-elec-file 160-phase-5000-sig-elec-glove50d-perElec-FDR-01-LH_newVer.csv
 # SIG_FN := --sig-elec-file 129-phase-5000-sig-elec-glove50d-perElec-FDR-01-LH.csv
 
 
@@ -73,9 +74,9 @@ CONVERSATION_IDX := 0
 # {glove50 | gpt2-xl | blenderbot-small}
 EMB := blenderbot
 EMB := blenderbot-small
-EMB := glove50
 EMB := gpt2-xl
-CNXT_LEN := 1024
+EMB := glove50
+CNXT_LEN := 1023
 
 # Choose the window size to average for each point
 WS := 200
@@ -84,11 +85,11 @@ WS := 200
 ALIGN_WITH := glove50
 ALIGN_WITH := blenderbot-small
 ALIGN_WITH := gpt2-xl blenderbot-small
-ALIGN_WITH := gpt2-xl
+ALIGN_WITH := gpt2 glove
 
 # Choose layer
 # {1 for glove, 48 for gpt2}
-LAYER_IDX := 48
+LAYER_IDX := 1
 
 # Choose whether to PCA
 PCA_TO := 50
@@ -100,7 +101,7 @@ MWF := 0
 WV := all
 
 # Choose whether to label or phase shuffle
-SH := --shuffle
+# SH := --shuffle
 # PSH := --phase-shuffle
 
 # Choose whether to normalize the embeddings
@@ -109,7 +110,7 @@ SH := --shuffle
 
 # Choose the command to run: python runs locally, echo is for debugging, sbatch
 # is for running on SLURM all lags in parallel.
-CMD := python
+CMD := sbatch submit1.sh
 # {echo | python | sbatch submit1.sh}
 
 # datum
@@ -122,7 +123,7 @@ CMD := python
 # make separate models with separate electrodes (all at once is possible)
 PDIR := $(shell dirname `pwd`)
 link-data:
-	ln -fs $(PDIR)/247-pickling/results/* data/
+	ln -fs $(PDIR)/0shot-pickling/results/* data/
 	ln -s /projects/HASSON/247/data/podcast-data/*.csv data/
 	# ln -fs /scratch/gpfs/${USER}/247-pickling/results/* data/
 
@@ -156,7 +157,7 @@ run-encoding:
 		$(SH) \
 		$(PSH) \
 		--normalize $(NM)\
-		--output-parent-dir 0shot-$(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-polydet2-sh \
+		--output-parent-dir 0shot-$(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-concat5-6 \
 		--output-prefix '' \
 		--save-pred \
 		--test-near-neighbor

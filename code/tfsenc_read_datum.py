@@ -6,8 +6,6 @@ import pandas as pd
 from sklearn.preprocessing import normalize
 from utils import load_pickle
 
-NONWORDS = {"hm", "huh", "mhm", "mm", "oh", "uh", "uhuh", "um"}
-
 
 def remove_punctuation(df):
     return df[~df.token.isin(list(string.punctuation))]
@@ -74,9 +72,7 @@ def make_input_from_tokens(token_list):
     Returns:
         [type]: [description]
     """
-    windows = [
-        tuple(token_list[x : x + 2]) for x in range(len(token_list) - 2 + 1)
-    ]
+    windows = [tuple(token_list[x : x + 2]) for x in range(len(token_list) - 2 + 1)]
 
     return windows
 
@@ -126,9 +122,7 @@ def add_signal_length(args, df):
     df["conv_signal_length"] = np.nan
 
     for idx, conv in enumerate(df.conversation_id.unique()):
-        df.loc[
-            df.conversation_id == conv, "conv_signal_length"
-        ] = signal_lengths[idx]
+        df.loc[df.conversation_id == conv, "conv_signal_length"] = signal_lengths[idx]
 
     return df
 
@@ -152,6 +146,25 @@ def normalize_embeddings(args, df):
         df["embeddings"] = k.tolist()
 
     return df
+
+
+def concat_emb(datum, shift_num=10):
+
+    print(f"Concatenating prev {shift_num} embeddings for glove")
+    step = 1
+    datum["embeddings_shifted"] = datum.embeddings
+    for i in np.arange(shift_num):
+        datum["embeddings_shifted"] = datum.embeddings_shifted.shift(step)
+
+        datum.dropna(subset="embeddings_shifted", inplace=True)
+
+        def concat(x):
+            return np.concatenate((x["embeddings_shifted"], x["embeddings"]))
+
+        datum["embeddings"] = datum.apply(concat, axis=1)
+
+    datum.drop(columns=["embeddings_shifted"], inplace=True)
+    return datum
 
 
 def read_datum(args):
@@ -190,37 +203,14 @@ def read_datum(args):
         df = remove_punctuation(df)
     # df = df[~df['glove50_embeddings'].isna()]
 
-    # Apply filters
-    common = []
+    # Filter out criteria
+    NONWORDS = {"hm", "huh", "mhm", "mm", "oh", "uh", "uhuh", "um"}
+    common = np.repeat(True, len(df))
     for model in args.align_with:
-        if "gpt2" in model:
-            common.append(df.in_gpt2.values)
-        elif "blenderbot-small" in model:
-            common.append(df.in_blenderbot_small_90M.values)
-        elif "glove" in model:
-            common.append(df.in_glove.values)
-        elif "blenderbot" in model:
-            common.append(df.in_blenderbot_3B.values)
-
-    if "gpt2" in args.emb_type.lower():
-        common.append(df.in_gpt2.values)
-    elif "blenderbot-small" in args.emb_type.lower():
-        common.append(df.in_blenderbot_small_90M.values)
-    elif "blenderbot" in args.emb_type.lower():
-        common.append(df.in_blenderbot_3B.values)
-
-    if args.exclude_nonwords:
-        nonword_mask = df.word.str.lower().apply(lambda x: x in NONWORDS)
-        common.append(~nonword_mask.values)
-
-    if args.min_word_freq > 0:
-        freq_mask = df.word_freq_overall >= args.min_word_freq
-        common.append(freq_mask)
-
-    # # NOTE  something happening here, in_gpt2 messed up apparently
-    # if len(common):
-    #     common = np.vstack(common)
-    #     df = df[common.all(axis=0)].copy()
+        common = common & df[f"in_{model}"]
+    nonword_mask = df.word.str.lower().apply(lambda x: x in NONWORDS)
+    freq_mask = df.word_freq_overall >= args.min_word_freq
+    df = df[common & freq_mask & ~nonword_mask]
 
     end_n = len(df)
     print(f"Went from {start_n} words to {end_n} words")
@@ -239,5 +229,13 @@ def read_datum(args):
 
     if not args.normalize:
         df = normalize_embeddings(args, df)
+
+    if "glove50" in args.emb_type and "concat" in args.output_parent_dir:
+        if "concat10" in args.output_parent_dir:
+            df = concat_emb(df, 10)
+        elif "concat5" in args.output_parent_dir:
+            df = concat_emb(df, 5)
+        elif "concat20" in args.output_parent_dir:
+            df = concat_emb(df, 20)
 
     return df
