@@ -119,26 +119,41 @@ def cv_lm_003(
         foldYhat = model.predict(Xtes)
         YHAT[test_index, :] = foldYhat.reshape(-1, nChans)
 
-        # for glove concatenation (only nearestneighbors on the last 50d)
-        Xtran = Xtra[:, -50:]
-        Xtesn = Xtes[:, -50:]
-        Xtesc = Xtes[:, :-50]
-
+        ###### regular near neighbor
         if near_neighbor:
             nbrs = NearestNeighbors(n_neighbors=1, metric="cosine")
-            nbrs.fit(Xtran)
-            _, I = nbrs.kneighbors(Xtesn)
-            Xtesn = Xtran[I].squeeze()
-            XtesNN = np.hstack((Xtesc,Xtesn))
+            nbrs.fit(Xtra)
+            _, I = nbrs.kneighbors(Xtes)
+            XtesNN = Xtra[I].squeeze()
             YHAT_NN[test_index, :] = model.predict(XtesNN)
 
         if near_neighbor_test:
             nbrs = NearestNeighbors(n_neighbors=1, metric="cosine")
-            nbrs.fit(Xtesn)
+            nbrs.fit(Xtes)
             _, I = nbrs.kneighbors()
-            Xtesn = Xtesn[I].squeeze()
-            XtesNNT = np.hstack((Xtesc,Xtesn))
+            XtesNNT = Xtes[I].squeeze()
             YHAT_NNT[test_index, :] = model.predict(XtesNNT)
+
+        ##### for glove concatenation (only nearestneighbors on the last 50d)
+        # Xtran = Xtra[:, -50:]
+        # Xtesn = Xtes[:, -50:]
+        # Xtesc = Xtes[:, :-50]
+
+        # if near_neighbor:
+        #     nbrs = NearestNeighbors(n_neighbors=1, metric="cosine")
+        #     nbrs.fit(Xtran)
+        #     _, I = nbrs.kneighbors(Xtesn)
+        #     Xtesn = Xtran[I].squeeze()
+        #     XtesNN = np.hstack((Xtesc,Xtesn))
+        #     YHAT_NN[test_index, :] = model.predict(XtesNN)
+
+        # if near_neighbor_test:
+        #     nbrs = NearestNeighbors(n_neighbors=1, metric="cosine")
+        #     nbrs.fit(Xtesn)
+        #     _, I = nbrs.kneighbors()
+        #     Xtesn = Xtesn[I].squeeze()
+        #     XtesNNT = np.hstack((Xtesc,Xtesn))
+        #     YHAT_NNT[test_index, :] = model.predict(XtesNNT)
 
     return YHAT, YHAT_NN, YHAT_NNT, YTES
 

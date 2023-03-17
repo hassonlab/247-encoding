@@ -29,14 +29,14 @@ dirs = [
 # dirs = ['0shot-zz-podcast-full-777-gpt2-xl-717detrend/777/']
 dirs = ["0shot-zz-podcast-full-777-gpt2-xl-717ldp1/777/"]
 
-dirs = [
-    "0shot-kw-podcast-full-777-gpt2-xl-fold-2/777/",
-    "0shot-kw-podcast-full-777-gpt2-xl-fold-2-sh/777/",
-]
+# dirs = [
+#     "0shot-kw-podcast-full-777-gpt2-xl-fold/777/",
+#     "0shot-kw-podcast-full-777-gpt2-xl-fold-sh/777/",
+# ]
 
 dirs = [
-    "0shot-kw-podcast-full-777-glove50-concat5-6/777/",
-    "0shot-kw-podcast-full-777-glove50-concat5-6-sh/777/",
+    "0shot-kw-podcast-full-777-glove50-aligned/777/",
+    "0shot-kw-podcast-full-777-glove50-aligned-sh/777/",
 ]
 
 # Create experiments from master list
@@ -136,7 +136,9 @@ def paired_permutation(x, y, nperms):
 
 
 def fdr(pvals):
-    _, pcor, _, _ = multitest.multipletests(pvals, method="fdr_bh", is_sorted=False)
+    _, pcor, _, _ = multitest.multipletests(
+        pvals, method="fdr_bh", is_sorted=False
+    )
     return pcor
 
 
@@ -155,6 +157,7 @@ def run_exp(experiment, elecs):
         signal = []
         pred_signal = []
         nn_signal = []
+        nnt_signal = []
 
         # Load results of this run
         for elec in elecs:
@@ -172,58 +175,78 @@ def run_exp(experiment, elecs):
                 signal.append(data["Y_signal"])
                 pred_signal.append(data["Yhat_signal"])
                 nn_signal.append(data["Yhat_nn_signal"])
+                nnt_signal.append(data["Yhat_nnt_signal"])
 
         if len(signal) == 0:
             print("None of the electrodes were found")
             break
 
+        print(f"Found {len(signal)} electrodes for experiment {experiment}")
+
         signal = np.stack(signal, axis=-1)  # n_words x n_lags x n_elecs
         pred_signal = np.stack(pred_signal, axis=-1)
         nn_signal = np.stack(nn_signal, axis=-1)
+        nnt_signal = np.stack(nnt_signal, axis=-1)
 
-        corrs, corrs_nn = [], []
-        sems, sems_nn = [], []
-        rawcorr, rawcorr_nn = [], []
+        corrs, corrs_nn, corrs_nnt = [], [], []
+        sems, sems_nn, sems_nnt = [], [], []
+        rawcorr, rawcorr_nn, rawcorr_nnt = [], [], []
         acdw = []
 
         for lag in range(signal.shape[1]):
             A = signal[:, lag, :]  # n_words x n_elecs
             B = pred_signal[:, lag, :]  # n_words x n_elecs
             C = nn_signal[:, lag, :]  # n_words x n_elecs
+            D = nnt_signal[:, lag, :]  # n_words x n_elecs
             # acdw.append(stattools.durbin_watson(A - B, axis=0).mean())
             A = zscore(A, axis=0)
             B = zscore(B, axis=0)
             C = zscore(C, axis=0)
+            D = zscore(D, axis=0)
+
+            # correlation of original & predicted
             rs = correlate(A, B, axis=1)  # 1 is rows, 0 is columns
             corrs.append(rs.mean())
             sems.append(rs.std() / np.sqrt(len(rs)))
             rawcorr.append(rs)
 
+            # correlation of original & nn-train predicted
             rs = correlate(A, C, axis=1)
             corrs_nn.append(rs.mean())
             sems_nn.append(rs.std() / np.sqrt(len(rs)))
             rawcorr_nn.append(rs)
 
+            # correlation of original & nn-test predicted
+            rs = correlate(A, D, axis=1)
+            corrs_nnt.append(rs.mean())
+            sems_nnt.append(rs.std() / np.sqrt(len(rs)))
+            rawcorr_nnt.append(rs)
+
         # print('avg DW:', np.mean(acdw))
         nelecs = signal.shape[-1]
 
+        # plot for original correlation
         # lags = list(map(str, lags))
         lags = np.asarray(lags) / 1000
         xaxis = lags
         mean = np.asarray(corrs)
         err = np.asarray(sems)
-        col = "blue" if i == 0 else "gray"
+        col = (
+            "blue" if i == 0 else "gray"
+        )  # blue for original, grey for shuffled
         ax.plot(xaxis, mean, color=col)
         ax.fill_between(xaxis, mean - err, mean + err, alpha=0.1, color=col)
 
         corrs = np.vstack(rawcorr)
         corrs2 = np.vstack(rawcorr_nn)
+        corrs3 = np.vstack(rawcorr_nnt)
 
         df = pd.DataFrame(corrs.T, columns=lags)
         df.insert(0, "type", "actual" if i == 0 else "shuffle")
         dfs.append(df)
 
         if i == 0:
+            # plot for red line (nn-train cor)
             mean_nn = np.asarray(corrs_nn)
             err_nn = np.asarray(sems_nn)
             ax.plot(xaxis, mean_nn, color="red")
@@ -237,6 +260,22 @@ def run_exp(experiment, elecs):
 
             df = pd.DataFrame(corrs2.T, columns=lags)
             df.insert(0, "type", "near_neighbor")
+            dfs.append(df)
+
+            # plot for fuchsia line (nn-test cor)
+            mean_nnt = np.asarray(corrs_nnt)
+            err_nnt = np.asarray(sems_nnt)
+            ax.plot(xaxis, mean_nnt, color="orange")
+            ax.fill_between(
+                xaxis,
+                mean_nnt - err_nnt,
+                mean_nnt + err_nnt,
+                alpha=0.1,
+                color="orange",
+            )
+
+            df = pd.DataFrame(corrs3.T, columns=lags)
+            df.insert(0, "type", "near_neighbor_test")
             dfs.append(df)
 
         ax.set_title(f"{experiment} | N={nelecs}")
@@ -257,6 +296,7 @@ def run_exp(experiment, elecs):
                         minP = sigSig[gg].min()
                         ax.axhline(minP)
 
+            # sig test for nn-train
             pvals = [
                 paired_permutation(corrs2[i], corrs[i], nperms)
                 for i in range(len(lags))
@@ -275,6 +315,26 @@ def run_exp(experiment, elecs):
             dfs[0].insert(1, "threshold", minP)
             df = pd.DataFrame(issig).T.set_axis(lags, axis=1)
             df.insert(0, "type", "is_significant")
+            dfs.append(df)
+
+            # sig test for nn-test
+            pvals = [
+                paired_permutation(corrs3[i], corrs[i], nperms)
+                for i in range(len(lags))
+            ]
+            pcorr = fdr(pvals)
+            issig = (m > minP) & (pcorr < 0.01)
+            # siglags = issig.nonzero()[0]
+            # yheight = ax.get_ylim()[1] - .005
+            # ax.scatter(
+            #     lags[siglags],
+            #     [yheight]*len(siglags),
+            #     marker='*',
+            #     color='orange',
+            # )
+
+            df = pd.DataFrame(issig).T.set_axis(lags, axis=1)
+            df.insert(0, "type", "is_significant_test")
             dfs.append(df)
 
         # # breakpoint()
@@ -306,7 +366,9 @@ def run_exp(experiment, elecs):
     df = pd.concat(dfs)
     df.to_csv(f"results/figures/0shot-dat-{custom}-{experiment}-n_{nelecs}.csv")
 
-    fig.savefig(f"results/figures/0shot-fig-{custom}-{experiment}-n_{nelecs}.png")
+    fig.savefig(
+        f"results/figures/0shot-fig-{custom}-{experiment}-n_{nelecs}.png"
+    )
     plt.close()
 
 

@@ -203,6 +203,22 @@ def read_datum(args):
         df = remove_punctuation(df)
     # df = df[~df['glove50_embeddings'].isna()]
 
+    if "glove50" in args.emb_type and "concat" in args.output_parent_dir:
+        if "concat10" in args.output_parent_dir:
+            df = concat_emb(df, 10)
+        elif "concat5" in args.output_parent_dir:
+            df = concat_emb(df, 5)
+        elif "concat20" in args.output_parent_dir:
+            df = concat_emb(df, 20)
+
+    if "gpt2-xl" in args.emb_type and "shift-emb" in args.output_parent_dir:
+        print("Shifting embeddings for gpt2-xl")
+        df2 = df.copy()
+        df2['embeddings'] = df2.embeddings.shift(-1)
+        df2 = df2[df2.fold.shift(-1) == df2.fold]
+        df = df2
+        df.dropna(axis=0, subset=['embeddings'], inplace=True) 
+
     # Filter out criteria
     NONWORDS = {"hm", "huh", "mhm", "mm", "oh", "uh", "uhuh", "um"}
     common = np.repeat(True, len(df))
@@ -229,13 +245,5 @@ def read_datum(args):
 
     if not args.normalize:
         df = normalize_embeddings(args, df)
-
-    if "glove50" in args.emb_type and "concat" in args.output_parent_dir:
-        if "concat10" in args.output_parent_dir:
-            df = concat_emb(df, 10)
-        elif "concat5" in args.output_parent_dir:
-            df = concat_emb(df, 5)
-        elif "concat20" in args.output_parent_dir:
-            df = concat_emb(df, 20)
 
     return df
