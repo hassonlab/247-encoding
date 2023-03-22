@@ -238,6 +238,12 @@ def main():
     electrode_info = process_subjects(args)
     parallel_encoding(args, electrode_info, datum, stitch_index)
 
+    # maybe change here to single_electrode_encoding? 
+    # maybe not - let's leave it so I just run all electrodes
+    # for electrode in electrode_info.items():
+    #     single_electrode_encoding(electrode, args, datum, stitch_index)
+
+    
     return
 
 
