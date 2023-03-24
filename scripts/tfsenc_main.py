@@ -86,7 +86,7 @@ def process_subjects(args):
             )
             for key in args.electrodes
         }
-
+    
     return electrode_info
 
 
@@ -209,6 +209,23 @@ def parallel_encoding(args, electrode_info, datum, stitch_index, parallel=True):
             args.full_output_dir, "summary.csv"
         )  # summary file
         p = Pool(4)  # multiprocessing
+
+        # Skipping elecs already done
+        if os.path.exists(summary_file): # previous job
+            print("Previously ran the same job, checking for elecs done")
+            elecs_done = [os.path.basename(file) for file in glob.glob(os.path.join(args.full_output_dir,"*_*.csv"))]
+            elecs_done = sorted(elecs_done)
+            while len(elecs_done) > 0:
+                if "comp" in elecs_done[0]: # has comp
+                    if elecs_done[1].replace("prod","comp") == elecs_done[0]: # has prod
+                        elec_done = elecs_done.pop(1)
+                        elec_done = elec_done.replace("_prod.csv","")
+                        if str(args.sid) in elec_done:
+                            elec_done = elec_done.replace(f"{args.sid}_","")
+                        print(f"Skipping {elec_done}")
+                        electrode_info = {key:val for key, val in electrode_info.items() if val != elec_done}
+                elecs_done.pop(0)
+
         with open(summary_file, "w") as f:
             writer = csv.writer(f, delimiter=",", lineterminator="\r\n")
             writer.writerow(("sid", "electrode", "prod", "comp"))
