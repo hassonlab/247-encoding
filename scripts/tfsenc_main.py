@@ -51,6 +51,7 @@ def process_subjects(args):
     """
     ds = load_pickle(os.path.join(args.PICKLE_DIR, args.electrode_file))
     df = pd.DataFrame(ds)
+    df["subject"] = df.subject.astype("int64")
 
     if args.sig_elec_file:  # sig elec files for 1 or more sid (used for 777)
         sig_elec_file = os.path.join(
@@ -59,15 +60,12 @@ def process_subjects(args):
         sig_elec_list = pd.read_csv(sig_elec_file).rename(
             columns={"electrode": "electrode_name"}
         )
-        df["subject"] = df.subject.astype("int64")
         sid_sig_elec_list = pd.merge(
             df, sig_elec_list, how="inner", on=["subject", "electrode_name"]
         )
         assert len(sig_elec_list) == len(sid_sig_elec_list), "Sig Elecs Missing"
         electrode_info = {
-            (values["subject"], values["electrode_id"]): values[
-                "electrode_name"
-            ]
+            (values["subject"], values["electrode_id"]): values["electrode_name"]
             for _, values in sid_sig_elec_list.iterrows()
         }
 
@@ -77,8 +75,7 @@ def process_subjects(args):
             (args.sid, key): next(
                 iter(
                     df.loc[
-                        (df.subject == str(args.sid))
-                        & (df.electrode_id == key),
+                        (df.subject == str(args.sid)) & (df.electrode_id == key),
                         "electrode_name",
                     ]
                 ),
@@ -86,7 +83,7 @@ def process_subjects(args):
             )
             for key in args.electrodes
         }
-    
+
     return electrode_info
 
 
@@ -140,9 +137,7 @@ def single_electrode_encoding(electrode, args, datum, stitch_index):
         fold_cat_prod = []
         fold_cat_comp = get_kfolds(comp_X, args.fold_num)
     elif (
-        "single-conv" in args.datum_mod
-        or args.conversation_id
-        or args.sid == 798
+        "single-conv" in args.datum_mod or args.conversation_id or args.sid == 798
     ):  # 1 conv
         fold_cat_prod = get_kfolds(prod_X, args.fold_num)
         fold_cat_comp = get_kfolds(comp_X, args.fold_num)
@@ -150,15 +145,11 @@ def single_electrode_encoding(electrode, args, datum, stitch_index):
         args.project_id == "tfs"
         and elec_datum.conversation_id.nunique() < args.fold_num
     ):  # num of convos less than num of folds (special case for 7170)
-        print(
-            f"{args.sid} {elec_name} has less conversations than the number of folds"
-        )
+        print(f"{args.sid} {elec_name} has less conversations than the number of folds")
         return (args.sid, elec_name, 1, 1)
     else:
         # Get groupkfolds
-        fold_cat_prod, fold_cat_comp = get_groupkfolds(
-            elec_datum, X, Y, args.fold_num
-        )
+        fold_cat_prod, fold_cat_comp = get_groupkfolds(elec_datum, X, Y, args.fold_num)
         if (
             len(np.unique(fold_cat_prod)) < args.fold_num
             or len(np.unique(fold_cat_comp)) < args.fold_num
@@ -205,11 +196,9 @@ def parallel_encoding(args, electrode_info, datum, stitch_index, parallel=True):
     #     parallel = False
     if parallel:
         print("Running all electrodes in parallel")
-        summary_file = os.path.join(
-            args.full_output_dir, "summary.csv"
-        )  # summary file
-        p = Pool(4)  # multiprocessing
-
+        summary_file = os.path.join(args.full_output_dir, "summary.csv")  # summary file
+        p = Pool(processes=get_cpu_count())  # multiprocessing
+        
         # Skipping elecs already done
         if os.path.exists(summary_file): # previous job
             print("Previously ran the same job, checking for elecs done")
@@ -225,7 +214,7 @@ def parallel_encoding(args, electrode_info, datum, stitch_index, parallel=True):
                         print(f"Skipping {elec_done}")
                         electrode_info = {key:val for key, val in electrode_info.items() if val != elec_done}
                 elecs_done.pop(0)
-
+        
         with open(summary_file, "w") as f:
             writer = csv.writer(f, delimiter=",", lineterminator="\r\n")
             writer.writerow(("sid", "electrode", "prod", "comp"))
