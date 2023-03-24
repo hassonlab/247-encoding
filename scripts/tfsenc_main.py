@@ -197,7 +197,7 @@ def parallel_encoding(args, electrode_info, datum, stitch_index, parallel=True):
     if parallel:
         print("Running all electrodes in parallel")
         summary_file = os.path.join(args.full_output_dir, "summary.csv")  # summary file
-        p = Pool(processes=get_cpu_count())  # multiprocessing
+        p = Pool(4)  # multiprocessing
         
         # Skipping elecs already done
         if os.path.exists(summary_file): # previous job
