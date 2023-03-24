@@ -9,12 +9,12 @@ if [[ "$HOSTNAME" == *"tiger"* ]]
 then
     echo "It's tiger"
     module load anaconda
-    source activate 247-main
+    source activate /home/kw1166/.conda/envs/247-main-new
 elif [[ "$HOSTNAME" == *"della"* ]]
 then
     echo "It's Della"
     module load anaconda
-    source activate 247-main
+    source activate /home/hgazula/.conda/envs/247-main
 else
     module load anacondapy
     source activate srm
