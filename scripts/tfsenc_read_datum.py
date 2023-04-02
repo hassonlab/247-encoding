@@ -77,8 +77,9 @@ def normalize_embeddings(args, df):
 
     try:
         k = normalize(k, norm=args.normalize, axis=1)
-    except ValueError:
         df["embeddings"] = k.tolist()
+    except ValueError:
+        print("Error in normalization")
 
     return df
 
@@ -132,7 +133,7 @@ def process_datum(args, df, stitch):
     #     except KeyError:
     #         pass
 
-    if not args.normalize:
+    if args.normalize:
         df = normalize_embeddings(args, df)
 
     return df
