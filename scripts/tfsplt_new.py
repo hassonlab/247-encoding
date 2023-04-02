@@ -108,10 +108,10 @@ def get_cmap_smap(args):
 
     cmap = plt.cm.get_cmap("jet")
 
-    # if len(args.labels) > 10:
-    #     col_len = 17
-    #     colors = [cmap(i / col_len) for i in range(1, col_len)]
-
+    if len(unique_labels) > 10:
+        colors = [
+            cmap(i / len(unique_labels)) for i in range(0, len(unique_labels))
+        ]
     # colors = [colorFader('#97baf7','#000308',i/col_len) for i in range(1,col_len)] # color gradient
 
     # colors2 = [colorFader('#97baf7','#032661',i/col_len) for i in range(1,col_len)] # color gradient
@@ -135,12 +135,16 @@ def get_cmap_smap(args):
             for label, style in zip(unique_labels, styles):
                 cmap[(label, key)] = color
                 smap[(label, key)] = style
-    elif args.lc_by == args.ls_by == "labels":  # both line color and style by labels
+    elif (
+        args.lc_by == args.ls_by == "labels"
+    ):  # both line color and style by labels
         for label, color, style in zip(unique_labels, colors, styles):
             for key in unique_keys:
                 cmap[(label, key)] = color
                 smap[(label, key)] = style
-    elif args.lc_by == args.ls_by == "keys":  # both line color and style by keys
+    elif (
+        args.lc_by == args.ls_by == "keys"
+    ):  # both line color and style by keys
         for key, color, style in zip(unique_keys, colors, styles):
             for label in unique_labels:
                 cmap[(label, key)] = color
@@ -185,7 +189,9 @@ elif len(args.sig_elec_file) == len(args.sid) * len(args.keys):
             sigelecs[sid_key] = set(elecs)
             multiple_sid = True
 else:
-    raise Exception("Need a significant electrode file for each subject-key combo")
+    raise Exception(
+        "Need a significant electrode file for each subject-key combo"
+    )
 
 
 # -----------------------------------------------------------------------------
@@ -256,7 +262,9 @@ if len(args.lags_show) < len(
 ):  # if we want to plot part of the lags and not all lags
     print("Trimming Data")
     chosen_lag_idx = [
-        idx for idx, element in enumerate(args.lags_plot) if element in args.lags_show
+        idx
+        for idx, element in enumerate(args.lags_plot)
+        if element in args.lags_show
     ]
     df = df.loc[:, chosen_lag_idx]  # chose from lags to show for the plot
     assert len(x_vals_show) == len(
@@ -415,7 +423,13 @@ def plot_electrodes(pdf):
         for (label, _, mode, _), values in subdf.iterrows():
             mode = (label, mode)
             label = "-".join(mode)
-            ax.plot(x_vals_show, values, label=label, color=cmap[mode], ls=smap[mode])
+            ax.plot(
+                x_vals_show,
+                values,
+                label=label,
+                color=cmap[mode],
+                ls=smap[mode],
+            )
             layer_num = int(mode[0].replace("layer", ""))
             axins.scatter(layer_num, max(values), color=cmap[mode])
         if len(args.lag_ticks) != 0:
@@ -425,7 +439,11 @@ def plot_electrodes(pdf):
         ax.axvline(0, ls="dashed", alpha=0.3, c="k")
         ax.set_ylim(vmin - 0.05, vmax + 0.05)  # .35
         ax.legend(loc="upper left", frameon=False)
-        ax.set(xlabel="Lag (s)", ylabel="Correlation (r)", title=f"{sid} {electrode}")
+        ax.set(
+            xlabel="Lag (s)",
+            ylabel="Correlation (r)",
+            title=f"{sid} {electrode}",
+        )
         imname = get_elecbrain(electrode)
         if os.path.isfile(imname):
             arr_image = plt.imread(imname, format="png")
@@ -451,7 +469,13 @@ def plot_electrodes_split_by_key(pdf, split_dir):
             for row, values in subsubdf.iterrows():
                 label = row[0]
                 key = (label, mode)
-                ax.plot(x_vals_show, values, label=label, color=cmap[key], ls=smap[key])
+                ax.plot(
+                    x_vals_show,
+                    values,
+                    label=label,
+                    color=cmap[key],
+                    ls=smap[key],
+                )
             if len(args.lag_ticks) != 0:
                 ax.set_xticks(args.lag_ticks)
                 ax.set_xticklabels(args.lag_tick_labels)
@@ -489,7 +513,13 @@ def plot_electrodes_split_by_label(pdf, split_dir):
             for row, values in subsubdf.iterrows():
                 mode = row[2]
                 key = (label, mode)
-                ax.plot(x_vals_show, values, label=mode, color=cmap[key], ls=smap[key])
+                ax.plot(
+                    x_vals_show,
+                    values,
+                    label=mode,
+                    color=cmap[key],
+                    ls=smap[key],
+                )
             if len(args.lag_ticks) != 0:
                 ax.set_xticks(args.lag_ticks)
                 ax.set_xticklabels(args.lag_tick_labels)
