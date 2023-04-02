@@ -587,6 +587,7 @@ def read_datum(args, stitch):
     if "whisper" in args.emb_type:  ## HACK
         base_df = base_df.dropna(subset=["onset", "offset"])
         assert len(base_df) == len(emb_df)
+    
     if len(emb_df) != len(base_df):
         df = pd.merge(
             base_df, emb_df, left_index=True, right_index=True
