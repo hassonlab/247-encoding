@@ -167,6 +167,9 @@ def filter_datum(args, df):
     freq_mask = df.word_freq_overall >= args.min_word_freq
     common &= freq_mask
 
+    speaker_mask = df.speaker.str.contains("Speaker")
+    common &= speaker_mask
+
     df = df[common]
 
     return df
