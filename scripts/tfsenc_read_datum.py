@@ -612,7 +612,7 @@ def read_datum(args, stitch):
     df = mod_datum(args, df)  # further filter datum based on datum_mod argument
     print(f"Datum final length: {len(df)}")
 
-    if args.project_id == "tfs" and len(df.embeddings.iloc[0]) >= 2000:  # emb dim too big
+    if args.project_id == "tfs" and len(df.embeddings.iloc[0]) >= 2000 and args.pca_to > 0:  # emb dim too big
         # HACK
         print(f"Running early pca due to big embedding dimension")
         df = run_pca(args, df)
