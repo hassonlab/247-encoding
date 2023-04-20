@@ -4,6 +4,7 @@ import string
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import normalize
+from sklearn.decomposition import PCA
 from utils import load_pickle
 
 # import gensim.downloader as api
@@ -76,8 +77,9 @@ def normalize_embeddings(args, df):
 
     try:
         k = normalize(k, norm=args.normalize, axis=1)
-    except ValueError:
         df["embeddings"] = k.tolist()
+    except ValueError:
+        print("Error in normalization")
 
     return df
 
@@ -131,7 +133,7 @@ def process_datum(args, df, stitch):
     #     except KeyError:
     #         pass
 
-    if not args.normalize:
+    if args.normalize:
         df = normalize_embeddings(args, df)
 
     return df
@@ -164,6 +166,9 @@ def filter_datum(args, df):
 
     freq_mask = df.word_freq_overall >= args.min_word_freq
     common &= freq_mask
+
+    speaker_mask = df.speaker.str.contains("Speaker")
+    common &= speaker_mask
 
     df = df[common]
 
@@ -530,6 +535,46 @@ def mod_datum(args, datum):
     return datum
 
 
+def run_pca(args, df):
+    pca_to = args.pca_to
+    pca = PCA(n_components=pca_to, svd_solver="auto", whiten=True)
+
+    df_emb = df["embeddings"]
+    embs = np.vstack(df_emb.values)
+
+    # assert embs.shape[1] % 12 == 0, "Something wrong with emb shape"
+
+    if "-" in args.window_num:  # range
+        start_win = args.window_num[: args.window_num.find("-")]
+        end_win = args.window_num[args.window_num.find("-") + 1 :]
+    else:  # onewindow
+        start_win = end_win = args.window_num
+    assert start_win.isdigit()
+    assert end_win.isdigit()
+    emb_dim = 384  ## HACK whisper-tiny.en
+
+    if "full-en-offset" in args.base_df_path:
+        print(f"Taking win {start_win} to {end_win} from the back")
+        start_idx = int(end_win) * emb_dim * -1
+        end_idx = (int(start_win) - 1) * emb_dim * -1
+        if start_win == "1":
+            embs = embs[:, start_idx:]
+        else:
+            embs = embs[:, start_idx:end_idx]
+    else:
+        print(f"Taking win {start_win} to {end_win}")
+        start_idx = (int(start_win) - 1) * emb_dim
+        end_idx = int(end_win) * emb_dim
+        embs = embs[:, start_idx:end_idx]
+    print(f"PCA from {embs.shape[1]} to {pca_to}")
+    pca_output = pca.fit_transform(embs)
+    print(f"PCA explained variance: {sum(pca.explained_variance_)}")
+    print(f"PCA explained variance ratio: {sum(pca.explained_variance_ratio_)}")
+    df["embeddings"] = pca_output.tolist()
+
+    return df
+
+
 def read_datum(args, stitch):
     """Load, process, and filter datum
 
@@ -542,10 +587,20 @@ def read_datum(args, stitch):
     """
     emb_df = load_datum(args.emb_df_path)
     base_df = load_datum(args.base_df_path)
+    if "whisper" in args.emb_type:  ## HACK
+        base_df = base_df.dropna(subset=["onset", "offset"])
+        assert len(base_df) == len(emb_df)
+    
+    if len(emb_df) != len(base_df):
+        df = pd.merge(
+            base_df, emb_df, left_index=True, right_index=True
+        )  # TODO Needs testing (either bert_utterance or whisper)
+    else: # HACK until pickling is fixed
+        base_df.reset_index(
+            drop=False, inplace=True
+        )
+        df = pd.concat([base_df, emb_df], axis=1)
 
-    df = pd.merge(
-        base_df, emb_df, left_index=True, right_index=True
-    )  # TODO Needs testing (either bert_utterance or whisper)
     print(f"After loading: Datum loads with {len(df)} words")
 
     df = process_datum(args, df, stitch)
@@ -556,5 +611,10 @@ def read_datum(args, stitch):
 
     df = mod_datum(args, df)  # further filter datum based on datum_mod argument
     print(f"Datum final length: {len(df)}")
+
+    if args.project_id == "tfs" and len(df.embeddings.iloc[0]) >= 2000 and args.pca_to > 0:  # emb dim too big
+        # HACK
+        print(f"Running early pca due to big embedding dimension")
+        df = run_pca(args, df)
 
     return df

@@ -8,7 +8,7 @@ DT := ${USR}
 #  Configurable options
 # -----------------------------------------------------------------------------
 
-PRJCT_ID := tfs
+PRJCT_ID := podcast
 # {podcast | tfs}
 
 ############## tfs electrode ids ##############
@@ -45,7 +45,7 @@ SIG_FN :=
 # SIG_FN := --sig-elec-file tfs-sig-file-7170-region-ifg.csv tfs-sig-file-7170-region-ifg.csv
 
 # podcast electrode IDs
-# SID := 777
+SID := 777
 # SID := 661
 # E_LIST :=  $(shell seq 1 115)
 # SID := 662
@@ -67,7 +67,8 @@ SIG_FN :=
 #
 
 ### podcast significant electrode list (if provided, override electrode IDs)
-# SIG_FN := --sig-elec-file podcast_160.csv
+SIG_FN := --sig-elec-file podcast_160.csv
+SIG_FN := --sig-elec-file ccn-sig-file-whisper-en-max.csv
 
 PKL_IDENTIFIER := full
 # {full | trimmed}
@@ -83,7 +84,7 @@ LAGS := -300000 -250000 -200000 200000 250000 300000 # lag300k-50k
 LAGS := -150000 -120000 -90000 90000 120000 150000 # lag150k-30k
 LAGS := -60000 -50000 -40000 -30000 -20000 20000 30000 40000 50000 60000 # lag60k-10k
 LAGS := {-10000..10000..25} # lag10k-25
-LAGS := {-2000..2000..25} # lag2k-25
+LAGS := {-5000..5000..25} # lag2k-25
 
 # Conversation ID (Choose 0 to run for all conversations)
 CONVERSATION_IDX := 0
@@ -94,7 +95,8 @@ EMB := blenderbot
 EMB := gpt2-xl
 EMB := blenderbot-small
 EMB := gpt2-xl
-CNXT_LEN := 1024
+EMB := whisper-medium.en-encoder-concat
+CNXT_LEN := 1
 
 # Choose the window size to average for each point
 WS := 200
@@ -104,10 +106,11 @@ ALIGN_WITH := blenderbot-small
 ALIGN_WITH := gpt2-xl
 ALIGN_WITH := glove50 gpt2-xl blenderbot-small
 ALIGN_WITH := $(EMB)
+ALIGN_WITH := 
 
 # Choose layer of embeddings to use
 # {1 for glove, 48 for gpt2, 8 for blenderbot encoder, 16 for blenderbot decoder}
-LAYER_IDX := 48
+LAYER_IDX := 0
 
 # Choose whether to PCA (0 or for no pca)
 PCA_TO := 50
@@ -129,11 +132,14 @@ WV := all
 NM := l2
 # {l1 | l2 | max}
 
+# Choose windows for whisper-encoder (x: x-th window or x-y: x-th to y-th window)
+WN := 1-12
+
 # Choose the command to run: python runs locally, echo is for debugging, sbatch
 # is for running on SLURM all lags in parallel.
 CMD := echo
-CMD := sbatch submit1.sh
 CMD := python
+CMD := sbatch submit1.sh
 # {echo | python | sbatch submit1.sh}
 
 # datum
@@ -189,8 +195,8 @@ actually predicted by gpt2} (only used for glove embeddings)
 # 3. {everything else is purely for the result folder name}
 
 DM := lag2k-25-incorrect
-DM := lag10k-25-all
 DM := lag2k-25-improb
+DM := lag5k-25-all
 
 ############## Model Modification ##############
 # {best-lag: run encoding using the best lag (lag model with highest correlation)}
@@ -230,6 +236,7 @@ run-encoding:
 		--context-length $(CNXT_LEN) \
 		--align-with $(ALIGN_WITH) \
 		--window-size $(WS) \
+		--window-num $(WN) \
 		--word-value $(WV) \
 		--npermutations $(NPERM) \
 		--lags $(LAGS) \
@@ -250,7 +257,7 @@ run-encoding:
 
 run-encoding-layers:
 	mkdir -p logs
-	for context in $(CNXT_LEN); do\
+	for windows in $(WN); do\
 		for layer in $(LAYER_IDX); do\
 			$(CMD) scripts/$(FILE).py \
 				--project-id $(PRJCT_ID) \
@@ -263,6 +270,7 @@ run-encoding-layers:
 				--context-length $$context \
 				--align-with $(ALIGN_WITH) \
 				--window-size $(WS) \
+				--window-num $$windows \
 				--word-value $(WV) \
 				--npermutations $(NPERM) \
 				--lags $(LAGS) \
@@ -276,7 +284,7 @@ run-encoding-layers:
 				$(SH) \
 				$(PSH) \
 				--normalize $(NM)\
-				--output-parent-dir $(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-$(DM)-1024-$$layer \
+				--output-parent-dir $(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-$(DM)-$$windows-$$layer \
 				--output-prefix $(USR)-$(WS)ms-$(WV);\
 		done; \
 	done;
