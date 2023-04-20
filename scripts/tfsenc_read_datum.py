@@ -544,28 +544,28 @@ def run_pca(args, df):
 
     # assert embs.shape[1] % 12 == 0, "Something wrong with emb shape"
 
-    if "-" in args.window_num:  # range
-        start_win = args.window_num[: args.window_num.find("-")]
-        end_win = args.window_num[args.window_num.find("-") + 1 :]
-    else:  # onewindow
-        start_win = end_win = args.window_num
-    assert start_win.isdigit()
-    assert end_win.isdigit()
-    emb_dim = 384  ## HACK whisper-tiny.en
+    # if "-" in args.window_num:  # range
+    #     start_win = args.window_num[: args.window_num.find("-")]
+    #     end_win = args.window_num[args.window_num.find("-") + 1 :]
+    # else:  # onewindow
+    #     start_win = end_win = args.window_num
+    # assert start_win.isdigit()
+    # assert end_win.isdigit()
+    # emb_dim = 384  ## HACK whisper-tiny.en
 
-    if "full-en-offset" in args.base_df_path:
-        print(f"Taking win {start_win} to {end_win} from the back")
-        start_idx = int(end_win) * emb_dim * -1
-        end_idx = (int(start_win) - 1) * emb_dim * -1
-        if start_win == "1":
-            embs = embs[:, start_idx:]
-        else:
-            embs = embs[:, start_idx:end_idx]
-    else:
-        print(f"Taking win {start_win} to {end_win}")
-        start_idx = (int(start_win) - 1) * emb_dim
-        end_idx = int(end_win) * emb_dim
-        embs = embs[:, start_idx:end_idx]
+    # if "full-en-offset" in args.base_df_path:
+    #     print(f"Taking win {start_win} to {end_win} from the back")
+    #     start_idx = int(end_win) * emb_dim * -1
+    #     end_idx = (int(start_win) - 1) * emb_dim * -1
+    #     if start_win == "1":
+    #         embs = embs[:, start_idx:]
+    #     else:
+    #         embs = embs[:, start_idx:end_idx]
+    # else:
+    #     print(f"Taking win {start_win} to {end_win}")
+    #     start_idx = (int(start_win) - 1) * emb_dim
+    #     end_idx = int(end_win) * emb_dim
+    #     embs = embs[:, start_idx:end_idx]
     print(f"PCA from {embs.shape[1]} to {pca_to}")
     pca_output = pca.fit_transform(embs)
     print(f"PCA explained variance: {sum(pca.explained_variance_)}")
