@@ -282,6 +282,16 @@ def main():
     stitch_index = return_stitch_index(args)
     datum = read_datum(args, stitch_index)
 
+    # HACK for concatenation
+    args.emb_df_path = args.emb_df_path.replace("encoder","decoder").replace("04","03")
+    args.base_df_path = args.base_df_path.replace("encoder","decoder")
+    datum2 = read_datum(args, stitch_index)
+
+    datum.loc[:,"embeddings_de"] = datum2.embeddings
+    def concat(x):
+        return np.concatenate((x["embeddings"], x["embeddings_de"]))
+    datum.loc[:, "embeddings"] = datum.apply(concat, axis=1)
+
     # Processing significant electrodes or individual subjects
     electrode_info = process_subjects(args)
     parallel_encoding(args, electrode_info, datum, stitch_index)
