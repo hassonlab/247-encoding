@@ -115,7 +115,6 @@ def build_Y(onsets, convo_onsets, convo_offsets, brain_signal, lags, window_size
     Y1 = np.zeros((len(onsets), len(lags)))
 
     for lag in prange(len(lags)):
-
         lag_amount = int(lags[lag] / 1000 * 512)
 
         index_onsets = np.minimum(
@@ -182,17 +181,20 @@ def encoding_mp_prod_comp(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag)
         args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag
     )
 
-    if args.write_results == 'all_folds':
+    if args.write_results == "all_folds":
         # rp = [0] * len(np.unique(fold_tes))
         rp = {}
 
         for i in np.unique(fold_tes).tolist():
             # rp[int(i)], _, _ = encColCorr(Y_new[fold_tes == int(i)], PY_hat[fold_tes == int(i)])
-            rp[int(i)],_,_ = encColCorr(Y_new[fold_tes == int(i)], PY_hat[fold_tes == int(i)])
+            rp[int(i)], _, _ = encColCorr(
+                Y_new[fold_tes == int(i)], PY_hat[fold_tes == int(i)]
+            )
     else:
-        rp, _, _ = encColCorr(Y_new, PY_hat) 
+        rp, _, _ = encColCorr(Y_new, PY_hat)
 
     return rp
+
 
 def run_regression(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes):
     perm_prod = []
@@ -254,28 +256,27 @@ def write_encoding_results(args, cor_results, elec_name, mode):
     """
     trial_str = append_jobid_to_string(args, mode)
 
-    if args.write_results == 'all_folds':
-
+    if args.write_results == "all_folds":
         # output_dir = os.path.join(args.full_output_dir + "-" + args.write_results)
 
         # HACK
-        output_dir = f"/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/{args.emb_type}/{args.emb_type}-{args.sid}-{args.datum_mod}-{args.layer_idx}"
+        # output_dir = f"/scratch/gpfs/ln1144/247-encoding/results/tfs-whisper/{args.emb_type}/{args.emb_type}-{args.sid}-{args.datum_mod}-{args.layer_idx}"
 
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-    
-        filename = os.path.join(output_dir, elec_name + trial_str + ".csv")
+        # if not os.path.exists(output_dir):
+        #     os.makedirs(output_dir)
+        # filename = os.path.join(output_dir, elec_name + trial_str + ".csv")
+
+        filename = os.path.join(args.full_output_dir, elec_name + trial_str + ".csv")
 
         cor_results = cor_results[0]
         df = pd.DataFrame(cor_results)
         # get mean and standard error
-        df['avg'] = df.mean(axis=1)
-        df['se'] = df.sem(axis=1,ddof=0)
- 
-        df.to_csv(filename,index=False)
+        df["avg"] = df.mean(axis=1)
+        df["se"] = df.sem(axis=1, ddof=0)
+
+        df.to_csv(filename, index=False)
 
     else:
-
         filename = os.path.join(args.full_output_dir, elec_name + trial_str + ".csv")
 
         with open(filename, "w") as csvfile:

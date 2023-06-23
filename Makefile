@@ -82,8 +82,8 @@ LAGS := {-500..500..5} # lag500-5
 LAGS := -300000 -250000 -200000 200000 250000 300000 # lag300k-50k
 LAGS := -150000 -120000 -90000 90000 120000 150000 # lag150k-30k
 LAGS := -60000 -50000 -40000 -30000 -20000 20000 30000 40000 50000 60000 # lag60k-10k
-LAGS := {-10000..10000..25} # lag10k-25
 LAGS := {-2000..2000..25} # lag2k-25
+LAGS := {-10000..10000..25} # lag10k-25
 
 # Conversation ID (Choose 0 to run for all conversations)
 CONVERSATION_IDX := 0
@@ -94,7 +94,8 @@ EMB := blenderbot
 EMB := gpt2-xl
 EMB := blenderbot-small
 EMB := gpt2-xl
-CNXT_LEN := 1024
+EMB := whisper-tiny.en-encoder
+CNXT_LEN := 1
 
 # Choose the window size to average for each point
 WS := 200
@@ -104,6 +105,7 @@ ALIGN_WITH := blenderbot-small
 ALIGN_WITH := gpt2-xl
 ALIGN_WITH := glove50 gpt2-xl blenderbot-small
 ALIGN_WITH := $(EMB)
+ALIGN_WITH :=
 
 # Choose layer of embeddings to use
 # {1 for glove, 48 for gpt2, 8 for blenderbot encoder, 16 for blenderbot decoder}
@@ -121,19 +123,26 @@ FN := 10
 # TODO: explain this parameter.
 WV := all
 
+# Write results in folds #HACK
+WR := all_folds
+
 # Choose whether to label or phase shuffle
 # SH := --shuffle
 # PSH := --phase-shuffle
 
 # Choose whether to normalize the embeddings
 NM := l2
+NM := 
 # {l1 | l2 | max}
+
+# Choose windows for whisper-encoder ([x]: x-th window, [x-y]: x-th to y-th window)
+WN := 1-10
 
 # Choose the command to run: python runs locally, echo is for debugging, sbatch
 # is for running on SLURM all lags in parallel.
 CMD := echo
-CMD := sbatch submit1.sh
 CMD := python
+CMD := sbatch submit1.sh
 # {echo | python | sbatch submit1.sh}
 
 # datum
@@ -189,8 +198,8 @@ actually predicted by gpt2} (only used for glove embeddings)
 # 3. {everything else is purely for the result folder name}
 
 DM := lag2k-25-incorrect
-DM := lag10k-25-all
 DM := lag2k-25-improb
+DM := lag10k-25-all
 
 ############## Model Modification ##############
 # {best-lag: run encoding using the best lag (lag model with highest correlation)}
@@ -230,6 +239,7 @@ run-encoding:
 		--context-length $(CNXT_LEN) \
 		--align-with $(ALIGN_WITH) \
 		--window-size $(WS) \
+		--window-num $(WN) \
 		--word-value $(WV) \
 		--npermutations $(NPERM) \
 		--lags $(LAGS) \
@@ -239,6 +249,7 @@ run-encoding:
 		--layer-idx $(LAYER_IDX) \
 		--datum-mod $(DM) \
 		--model-mod $(MM) \
+		--write-results $(WR) \
 		$(BC) \
 		$(SIG_FN) \
 		$(SH) \
@@ -263,6 +274,7 @@ run-encoding-layers:
 				--context-length $$context \
 				--align-with $(ALIGN_WITH) \
 				--window-size $(WS) \
+				--window-num $(WN) \
 				--word-value $(WV) \
 				--npermutations $(NPERM) \
 				--lags $(LAGS) \
@@ -271,6 +283,7 @@ run-encoding-layers:
 				--layer-idx $$layer \
 				--datum-mod $(DM) \
 				--model-mod $(MM) \
+				--write-results $(WR) \
 				$(BC) \
 				$(SIG_FN) \
 				$(SH) \

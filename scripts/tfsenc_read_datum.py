@@ -77,8 +77,9 @@ def normalize_embeddings(args, df):
 
     try:
         k = normalize(k, norm=args.normalize, axis=1)
-    except ValueError:
         df["embeddings"] = k.tolist()
+    except ValueError:
+        raise Exception("Error in normalization")
 
     return df
 
@@ -429,7 +430,6 @@ def trim_datum(args, datum):
 
 
 def rand_emb(df):
-
     emb_max = df.embeddings.apply(max).max()
     emb_min = df.embeddings.apply(min).min()
 
@@ -458,7 +458,6 @@ def zeroshot_datum(df):
 
 
 def arb_emb(df):
-
     df2 = zeroshot_datum(df)
     df2 = df2.loc[:, ("word", "embeddings")]
     df2.reset_index(drop=True, inplace=True)
@@ -540,7 +539,7 @@ def run_pca(args, df):
     df_emb = df["embeddings"]
     embs = np.vstack(df_emb.values)
 
-    # assert embs.shape[1] % 12 == 0, "Something wrong with emb shape"
+    assert embs.shape[1] % 10 == 0, "Something wrong with emb shape"
 
     if "-" in args.window_num:  # range
         start_win = args.window_num[: args.window_num.find("-")]
@@ -550,8 +549,8 @@ def run_pca(args, df):
     assert start_win.isdigit()
     assert end_win.isdigit()
     emb_dim = 384  ## HACK whisper-tiny.en
-    # emb_dim = 4096  ## HACK whisper-medium.en
-    # emb_dim = 6400  ## HACK whisper-large-v2
+    emb_dim = 4096  ## HACK whisper-medium.en
+    emb_dim = 6400  ## HACK whisper-large-v2
 
     if "full-en-offset" in args.base_df_path:
         print(f"Taking win {start_win} to {end_win} from the back")
@@ -566,10 +565,11 @@ def run_pca(args, df):
         start_idx = (int(start_win) - 1) * emb_dim
         end_idx = int(end_win) * emb_dim
         embs = embs[:, start_idx:end_idx]
+
     print(f"PCA from {embs.shape[1]} to {pca_to}")
-    pca_output = pca.fit_transform(embs)
     print(f"PCA explained variance: {sum(pca.explained_variance_)}")
     print(f"PCA explained variance ratio: {sum(pca.explained_variance_ratio_)}")
+    pca_output = pca.fit_transform(embs)
     df["embeddings"] = pca_output.tolist()
 
     return df
@@ -590,7 +590,7 @@ def read_datum(args, stitch):
 
     if "whisper" in args.emb_type:  ## HACK
         base_df = base_df.dropna(subset=["onset", "offset"])
-        base_df.reset_index(drop=True,inplace=True)
+        base_df.reset_index(drop=True, inplace=True)
         assert len(base_df) == len(emb_df)
 
     df = pd.merge(
@@ -607,9 +607,8 @@ def read_datum(args, stitch):
     df = mod_datum(args, df)  # further filter datum based on datum_mod argument
     print(f"Datum final length: {len(df)}")
 
-    if args.project_id == "tfs" and len(df.embeddings.iloc[0]) >= 2000:  # emb dim too big
-        # HACK
-        print(f"Running early pca due to big embedding dimension")
-        df = run_pca(args, df)
+    # if args.project_id == "tfs":  # HACK for early pca for efficiency
+    #     print(f"Running early pca for large embeddings")
+    #     df = run_pca(args, df)
 
     return df
