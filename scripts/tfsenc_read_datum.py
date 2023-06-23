@@ -549,8 +549,8 @@ def run_pca(args, df):
     assert start_win.isdigit()
     assert end_win.isdigit()
     emb_dim = 384  ## HACK whisper-tiny.en
-    emb_dim = 4096  ## HACK whisper-medium.en
-    emb_dim = 6400  ## HACK whisper-large-v2
+    # emb_dim = 4096  ## HACK whisper-medium.en
+    # emb_dim = 6400  ## HACK whisper-large-v2
 
     if "full-en-offset" in args.base_df_path:
         print(f"Taking win {start_win} to {end_win} from the back")
