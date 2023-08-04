@@ -224,8 +224,8 @@ def mod_datum_by_preds(args, datum, emb_type):
             [
                 "adjusted_onset",
                 "word",
-                "top1_pred",
-                "top1_pred_prob",
+                # "top1_pred",
+                # "top1_pred_prob",
                 "true_pred_prob",
                 "true_pred_rank",
             ],
