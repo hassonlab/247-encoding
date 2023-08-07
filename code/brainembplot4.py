@@ -14,6 +14,18 @@ def fdr(pvals):
     return pcor
 
 
+def read_actual(filename):
+    df = pd.read_csv(filename)
+    df = df[df.type == "actual"]
+    df.drop(
+        columns={"Unnamed: 0", "type", "threshold"},
+        errors="ignore",
+        inplace=True,
+    )
+
+    return df
+
+
 def main():
     # Used for interaction plot after running brainembplot.py
 
@@ -83,116 +95,126 @@ def main():
     # ]
 
     results = [
+        # "results/figures-3rd/symbolic-oneout/0shot-dat-%s-all3_NYU_class_IFG-n_81.csv",
         # "results/figures-3rd/symbolic/0shot-dat-c-9-all3_NYU_class_IFG-n_81.csv",
-        # "results/figures-3rd-old/symbolic-9-3/0shot-dat-9-3-all3_NYU_class_IFG-n_81.csv",
-        # "results/figures-3rd-old/symbolic-9-4/0shot-dat-9-4-all3_NYU_class_IFG-n_81.csv",
-        # "results/figures-3rd-old/symbolic-9-5/0shot-dat-9-5-all3_NYU_class_IFG-n_81.csv",
-        # "results/figures-3rd-old/symbolic-9-9-4/0shot-dat-9-4-all3_NYU_class_IFG-n_81.csv",
-        # "results/figures-3rd/symbolic-concat1/0shot-dat-at1-all3_NYU_class_IFG-n_81.csv",
-        # "results/figures-3rd/symbolic-concat2/0shot-dat-at2-all3_NYU_class_IFG-n_81.csv",
-        # "results/figures-3rd/symbolic-concat3/0shot-dat-at3-all3_NYU_class_IFG-n_81.csv",
-        # "results/figures-3rd/symbolic-nopca/0shot-dat-pca-all3_NYU_class_IFG-n_81.csv",
-        # "results/figures-3rd/symbolic-nopca-concat1/0shot-dat-at1-all3_NYU_class_IFG-n_81.csv",
-        # "results/figures-3rd/symbolic-nopca-concat2/0shot-dat-at2-all3_NYU_class_IFG-n_81.csv",
-        # "results/figures-3rd/symbolic-nopca-concat3/0shot-dat-at3-all3_NYU_class_IFG-n_81.csv",
+        # "results/figures-3rd/symbolic-concat3-oneout/0shot-dat-%s-all3_NYU_class_IFG-n_81.csv",
+        "results/figures-3rd/symbolic-concat3/0shot-dat-at3-all3_NYU_class_IFG-n_81.csv",
         # "results/figures-2nd/glove-aligned-nnt/0shot-dat-ned-all3_NYU_class_IFG-n_81.csv",
-        # "results/figures-3rd-old/glove-9-4/0shot-dat-9-4-all3_NYU_class_IFG-n_81.csv",
         # "results/figures-2nd-old/glove-concat5/0shot-dat-5-6-all3_NYU_class_IFG-n_81.csv",
         # "results/figures-2nd/glove-concat10/0shot-dat-0-6-all3_NYU_class_IFG-n_81.csv",
         # "results/figures-2nd-old/glove-concat20/0shot-dat-0-6-all3_NYU_class_IFG-n_81.csv",
         # "results/figures-2nd/gpt2-fold-aligned-n-nnt/0shot-dat-emb-all3_NYU_class_IFG-n_81.csv",
         # "results/figures-2nd/gpt2-aligned-n-nnt/0shot-dat-emb-all3_NYU_class_IFG-n_81.csv",
         # "results/figures-2nd/gpt2-aligned-nnt/0shot-dat-ned-all3_NYU_class_IFG-n_81.csv",
-        # "results/figures-3rd-old/gpt2-9-4/0shot-dat-9-4-all3_NYU_class_IFG-n_81.csv",
         # "results/figures-2nd/gpt2-fold-aligned-nnt/0shot-dat-d-2-all3_NYU_class_IFG-n_81.csv",
     ]
-    titles = [
-        # "Arb",  # arbitrary
-        # "Arb-1",  # arbitrary-concats
-        # "Arb-2",  # arbitrary-concats
-        # "Arb-3",  # arbitrary-concats
-        # "Sym",  # symbolic
-        # "Sym",  # symbolic
-        # "Sym-1",  # symbolic-concats
-        # "Sym-2",  # symbolic-concats
-        # "Sym-3",  # symbolic-concats
-        # "ArbSym",  # arb sym
-        # "ArbSym-1",  # arb sym
-        # "ArbSym-2",  # arb sym
-        # "ArbSym-3",  # arb sym
-        # "GloVe",  # gpt2
-        # "GloVe20",  # gpt2
-        # "GPT2",  # gpt2
-        # "Arb",
-        # "POS",
-        # "Stop",
-        # "Shape",
-        # "Prefix",
-        # "Suffix",
-    ]
-    assert len(titles) == len(results)
 
-    fig, axes = plt.subplots(1, len(results), figsize=(30, 12))
-    # turn mitchell on for near-neighbor test analysis :)
-    mitchell = True
+    plt_title = "Symbolic-Concat3"
+    plt_title = "Symbolic"
+
+    fig, axes = plt.subplots(1, 1, figsize=(12, 12))
+
     mitchell = False
 
     side_label = True
-    for ax, file, plt_title in zip(np.ravel(axes), results, titles):
-        ax.set_ylim(-0.05, 0.1)
-        ax.set_xlim(-4000, 4000)
-        ax.set_xlabel("Time (ms)", fontsize=30, fontweight="bold")
-        if side_label:
-            ax.set_ylabel("Correlation", fontsize=30, fontweight="bold")
-            side_label = True
-        ax.tick_params(labelsize=14)
-        xticklabels = [
-            "-4000",
-            "-3000",
-            "-2000",
-            "-1000",
-            "0",
-            "1000",
-            "2000",
-            "3000",
-            "4000",
-        ]
-        ax.set_xticklabels(
-            xticklabels,
-            rotation=30,
-            ha="right",
-            rotation_mode="anchor",
-            weight="bold",
-            fontsize=23,
+    ax = axes
+
+    file = results[0]
+    ax.set_ylim(-0.05, 0.1)
+    ax.set_xlim(-4000, 4000)
+    ax.set_xlabel("Time (ms)", fontsize=30, fontweight="bold")
+    if side_label:
+        ax.set_ylabel("Correlation", fontsize=30, fontweight="bold")
+        side_label = True
+    ax.tick_params(labelsize=14)
+    xticklabels = [
+        "-4000",
+        "-3000",
+        "-2000",
+        "-1000",
+        "0",
+        "1000",
+        "2000",
+        "3000",
+        "4000",
+    ]
+    ax.set_xticklabels(
+        xticklabels,
+        rotation=30,
+        ha="right",
+        rotation_mode="anchor",
+        weight="bold",
+        fontsize=23,
+    )
+    ax.set_yticks([-0.05, 0, 0.05, 0.1])
+    yticklabels = ["-0.05", "0", "0.05", "0.1"]
+    ax.set_yticklabels(
+        yticklabels,
+        weight="bold",
+        fontsize=23,
+    )
+
+    # ax.set_title(plt_title, fontsize=50, fontweight="bold")
+
+    lags = np.arange(-4000, 4025, 25)
+
+    lw = 4
+    alpha = 0.1
+    alpha = 0.15
+
+    if "%s" in file:
+        df_final = pd.DataFrame()
+        df_final_mean = pd.DataFrame()
+        df_final_sems = pd.DataFrame()
+        for idx in np.arange(1, 62):
+            df = pd.read_csv(file % f"{idx:02}")
+            df_actual = df[df.type == "actual"]
+            df_actual.drop(
+                columns={"Unnamed: 0", "type", "threshold"},
+                errors="ignore",
+                inplace=True,
+            )
+
+            means = df_actual.mean()
+            sems = df_actual.sem()
+
+            df_final = pd.concat((df_final, df_actual))
+            df_final_mean = pd.concat((df_final_mean, means.to_frame().T))
+            df_final_sems = pd.concat((df_final_sems, sems.to_frame().T))
+        means = df_final.mean()
+        sems = df_final.sem()
+        ax.plot(lags, means, color="blue", lw=lw)
+        ax.fill_between(
+            lags, means - sems, means + sems, alpha=alpha, color="blue"
         )
-        ax.set_yticks([-0.05, 0, 0.05, 0.1])
-        yticklabels = ["-0.05", "0", "0.05", "0.1"]
-        ax.set_yticklabels(
-            yticklabels,
-            weight="bold",
-            fontsize=23,
-        )
+        # means = df_final_mean.mean()
+        # sems = df_final_sems.mean()
+        # ax.plot(lags, means, color="orange", lw=lw)
+        # ax.fill_between(
+        #     lags, means - sems, means + sems, alpha=alpha, color="orange"
+        # )
 
-        # ax.set_title(plt_title, fontsize=40, fontweight="bold")
-
-        lags = np.arange(-4000, 4025, 25)
-
-        df = pd.read_csv(file)
-        lw = 4
-        alpha = 0.1
-        alpha = 0.15
-
+    else:
         # Plot Blue line (regular encoding)
+        df = pd.read_csv(file)
         df_actual = df[df.type == "actual"]
-        # ax.axhline(df_actual.threshold.unique()[0], color="blue", linewidth=3)
+        threshold = df_actual.threshold.unique()[0]
+        ax.axhline(threshold, color="blue", linewidth=3)
         df_actual.drop(
             columns={"Unnamed: 0", "type", "threshold"},
             errors="ignore",
             inplace=True,
         )
+
         means = df_actual.mean()
         sems = df_actual.sem()
-        ax.plot(lags, means, color="blue", lw=lw)
+        ax.plot(
+            lags,
+            means,
+            color="blue",
+            lw=lw,
+            label="0Shot",
+        )
         ax.fill_between(
             lags, means - sems, means + sems, alpha=alpha, color="blue"
         )
@@ -205,70 +227,87 @@ def main():
             nn_type = "near_neighbor"
             col = "red"
         df_nn = df[df.type == nn_type]
-        df_nn.drop(
-            columns={"Unnamed: 0", "type", "threshold"},
-            errors="ignore",
-            inplace=True,
-        )
+        df_nn.drop(columns={"Unnamed: 0", "type", "threshold"}, inplace=True)
         means = df_nn.mean()
         sems = df_nn.sem()
-        ax.plot(lags, means, color=col, lw=lw)
+        ax.plot(
+            lags,
+            means,
+            color=col,
+            lw=lw,
+            label="NN",
+        )
         ax.fill_between(
             lags, means - sems, means + sems, alpha=alpha, color=col
         )
 
         # Plot Shuffle
         df_sh = df[df.type == "shuffle"]
-        df_sh.drop(
-            columns={"Unnamed: 0", "type", "threshold"},
-            errors="ignore",
-            inplace=True,
-        )
+        df_sh.drop(columns={"Unnamed: 0", "type", "threshold"}, inplace=True)
         means = df_sh.mean()
         sems = df_sh.sem()
-        ax.plot(lags, means, color="black", lw=lw)
+        ax.plot(
+            lags,
+            means,
+            color="black",
+            lw=lw,
+            label="Shuffled",
+        )
         ax.fill_between(
             lags, means - sems, means + sems, alpha=alpha, color="black"
         )
 
-        # # Plot Regular vs Near Neighbor Test Asterisks
-        # if "-nnt" in file and mitchell:
-        #     nn_type = "is_significant_test"
-        # else:
-        #     nn_type = "is_significant"
-        # df_sig = df[df.type == nn_type]
-        # df_sig.drop(
-        #     columns={"Unnamed: 0", "type", "threshold"},
-        #     errors="ignore",
-        #     inplace=True,
-        # )
-        # yheight = ax.get_ylim()[1] - 0.005
-        # sigs = df_sig.iloc[0, :].to_numpy().nonzero()[0]
-        # ax.scatter(lags[sigs], [yheight] * len(sigs), marker="*", color="blue")
+        # Plot Regular vs Near Neighbor Test Asterisks
+        if "-nnt" in file and mitchell:
+            nn_type = "is_significant_test"
+        else:
+            nn_type = "is_significant"
+        df_sig = df[df.type == nn_type]
+        df_sig.drop(columns={"Unnamed: 0", "type", "threshold"}, inplace=True)
+        yheight = ax.get_ylim()[1] - 0.005
+        sigs = df_sig.iloc[0, :].to_numpy().nonzero()[0]
+        ax.scatter(lags[sigs], [yheight] * len(sigs), marker="*", color="blue")
 
-        # Difference Test Asterisks
-        # if "glove-" in file or "symbolic-" in file:
-        #     df_actual.reset_index(drop=True, inplace=True)
-        #     df_nn.reset_index(drop=True, inplace=True)
-        #     df_diff = df_actual - df_nn
-        # else:
-        #     df_actual.reset_index(drop=True, inplace=True)
-        #     df_nn.reset_index(drop=True, inplace=True)
-        #     df_diff2 = df_actual - df_nn
+        sig_test = True
+        if sig_test:
+            # sig test for gpt2
+            second_file = "results/figures-2nd/gpt2-fold-aligned-nnt/0shot-dat-d-2-all3_NYU_class_IFG-n_81.csv"
+            second_file = "results/figures-3rd/symbolic-concat3/0shot-dat-at3-all3_NYU_class_IFG-n_81.csv"
+            second_file = "results/figures-3rd/symbolic/0shot-dat-c-9-all3_NYU_class_IFG-n_81.csv"
+            df_second = read_actual(second_file)
+            interactions = []
+            for i in np.arange(df_actual.shape[1]):
+                p = ttest_ind(df_second.iloc[:, i], df_actual.iloc[:, i])[1]
+                interactions.append(p)
+            interactions = fdr(interactions)
+            interactions[interactions >= 0.01] = 0
+            # interactions[df_actual.mean(axis=0) < threshold] = 0
+            sigs = interactions.nonzero()[0]
+            ax.scatter(
+                lags[sigs],
+                [yheight + 0.003] * len(sigs),
+                marker="*",
+                color="orange",
+            )
 
-        #     interactions = []
-        #     for i in np.arange(df_diff.shape[1]):
-        #         p = ttest_ind(df_diff2.iloc[:, i], df_diff.iloc[:, i])[1]
-        #         interactions.append(p)
-        #     interactions = fdr(interactions)
-        #     interactions[interactions >= 0.01] = 0
-        #     sigs = interactions.nonzero()[0]
-        #     ax.scatter(
-        #         lags[sigs],
-        #         [yheight + 0.004] * len(sigs),
-        #         marker="*",
-        #         color="lightgreen",
-        #     )
+            # sig test for glove
+            # glove_file = "results/figures-2nd/glove-aligned-nnt/0shot-dat-ned-all3_NYU_class_IFG-n_81.csv"
+            # glove_file = "results/figures-2nd/glove-concat10/0shot-dat-0-6-all3_NYU_class_IFG-n_81.csv"
+            # glove_file = "results/figures-2nd-old/glove-concat5/0shot-dat-5-6-all3_NYU_class_IFG-n_81.csv"
+            # df_glove = read_actual(glove_file)
+            # interactions = []
+            # for i in np.arange(df_actual.shape[1]):
+            #     p = ttest_ind(df_glove.iloc[:, i], df_actual.iloc[:, i])[1]
+            #     interactions.append(p)
+            # interactions = fdr(interactions)
+            # interactions[interactions >= 0.0001] = 0
+            # sigs = interactions.nonzero()[0]
+            # ax.scatter(
+            #     lags[sigs],
+            #     [yheight] * len(sigs),
+            #     marker="*",
+            #     color="red",
+            # )
 
     fig.savefig("results/figures/plots/result.png")
 

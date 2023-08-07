@@ -3,6 +3,7 @@ import glob
 import os
 from functools import partial
 from multiprocessing import Pool
+from collections import Counter
 
 import numpy as np
 import pandas as pd
@@ -25,6 +26,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import PolynomialFeatures
 from sklearn.model_selection import KFold
 import pickle
+import string
 
 
 def trim_signal(signal):
@@ -57,7 +59,6 @@ def load_electrode_data(args, elec_id):
 
     all_signal = []
     for convo_id, convo in enumerate(convos, 1):
-
         if args.conversation_id != 0 and convo_id != args.conversation_id:
             continue
 
@@ -107,7 +108,9 @@ def process_datum(args, df):
 def load_processed_datum(args):
     conversations = sorted(
         glob.glob(
-            os.path.join(os.getcwd(), "data", str(args.sid), "conv_embeddings", "*")
+            os.path.join(
+                os.getcwd(), "data", str(args.sid), "conv_embeddings", "*"
+            )
         )
     )
     all_datums = []
@@ -140,7 +143,8 @@ def process_subjects(args):
             key: next(
                 iter(
                     df.loc[
-                        (df.subject == str(args.sid)) & (df.electrode_id == key),
+                        (df.subject == str(args.sid))
+                        & (df.electrode_id == key),
                         "electrode_name",
                     ]
                 ),
@@ -169,19 +173,46 @@ def process_subjects(args):
 def process_sig_electrodes(args, datum):
     """Run encoding on select significant elctrodes specified by a file"""
     # Read in the significant electrodes
-    sig_elec_file = os.path.join(os.path.join(os.getcwd(), "data", args.sig_elec_file))
+    sig_elec_file = os.path.join(
+        os.path.join(os.getcwd(), "data", args.sig_elec_file)
+    )
     sig_elec_list = pd.read_csv(sig_elec_file)
+
+    if os.path.exists(args.full_output_dir):
+        print("Previously ran the same job, checking for elecs done")
+        elecs_done = [
+            os.path.basename(file)
+            for file in glob.glob(os.path.join(args.full_output_dir, "*_*.*"))
+        ]
+        elecs_done = [
+            elec.replace(".pkl", "").replace("_comp.csv", "")
+            for elec in elecs_done
+        ]
+        elecs_counts = Counter(elecs_done)
+
+        sig_elec_list["elec"] = (
+            sig_elec_list.subject.astype(str) + "_" + sig_elec_list.electrode
+        )
+        elecs_num = len(sig_elec_list)
+        for elec, count in elecs_counts.most_common():
+            if count == 2:
+                print(f"Skipping elec {elec}")
+                sig_elec_list = sig_elec_list[sig_elec_list.elec != elec]
+            elecs_num -= 1
+        assert elecs_num == len(sig_elec_list), "Wrong number of elecs skipped"
+        sig_elec_list.drop(columns={"elec"}, inplace=True)
 
     # Loop over each electrode
     for subject, elec_name in sig_elec_list.itertuples(index=False):
-
         assert isinstance(subject, int)
         CONV_DIR = "/projects/HASSON/247/data/conversations"
         if args.project_id == "podcast":
             CONV_DIR = "/projects/HASSON/247/data/podcast"
         BRAIN_DIR_STR = "preprocessed_all"
 
-        fname = os.path.join(CONV_DIR, "NY" + str(subject) + "*" + "conversation1")
+        fname = os.path.join(
+            CONV_DIR, "NY" + str(subject) + "*" + "conversation1"
+        )
         subject_id = glob.glob(fname)
         assert len(subject_id), f"No data found in {fname}"
         subject_id = os.path.basename(subject_id[0])
@@ -227,7 +258,9 @@ def process_sig_electrodes(args, datum):
             continue
 
         # Perform encoding/regression
-        encoding_regression(args, datum, elec_signal, str(subject) + "_" + elec_name)
+        encoding_regression(
+            args, datum, elec_signal, str(subject) + "_" + elec_name
+        )
 
     return
 
@@ -236,13 +269,14 @@ def dumdum1(iter_idx, args, datum, signal, name):
     seed = iter_idx + (os.getenv("SLURM_ARRAY_TASk_ID", 0) * 10000)
     np.random.seed(seed)
     new_signal = phase_randomize_1d(signal)
-    (prod_corr, comp_corr) = encoding_regression_pr(args, datum, new_signal, name)
+    (prod_corr, comp_corr) = encoding_regression_pr(
+        args, datum, new_signal, name
+    )
 
     return (prod_corr, comp_corr)
 
 
 def write_output(args, output_mat, name, output_str):
-
     output_dir = create_output_directory(args)
 
     if all(output_mat):
@@ -254,10 +288,8 @@ def write_output(args, output_mat, name, output_str):
 
 
 def this_is_where_you_perform_regression(args, electrode_info, datum):
-
     # Loop over each electrode
     for elec_id, elec_name in electrode_info.items():
-
         if elec_name is None:
             print(f"Electrode ID {elec_id} does not exist")
             continue
@@ -307,6 +339,20 @@ def zeroshot_datum(df):
     return df
 
 
+def zeroshot_datum2(df):
+    dfz = (
+        df[["word_without_punctuation", "adjusted_onset"]]
+        .groupby("word_without_punctuation")
+        .apply(lambda x: x.sample(1, random_state=42))
+    )
+    dfz.reset_index(level=1, inplace=True)
+    dfz.sort_values("adjusted_onset", inplace=True)
+    df = df.loc[dfz.level_1.values]
+    print(f"Zeroshot created datum with {len(df)} words")
+
+    return df
+
+
 @main_timer
 def main():
     # Read command line arguments
@@ -345,15 +391,16 @@ def main():
     if True:
         df = datum
 
-        import string
-
-        df["word"] = df.word.str.lower().str.strip(string.punctuation)
+        print("Not turning word to lower")
+        # df["word"] = df.word.str.lower().str.strip(string.punctuation)
+        df["word"] = df.word.str.strip(string.punctuation)
 
         nans = df.embeddings.apply(lambda x: np.isnan(x).any())
         notnon = df.is_nonword == 0
         if "gpt2" in args.emb_type:
             same = (
-                df.token2word.str.lower().str.strip() == df.word.str.lower().str.strip()
+                df.token2word.str.lower().str.strip()
+                == df.word.str.lower().str.strip()
             )
             df2 = df[same & ~nans & notnon].copy()
         else:
@@ -372,8 +419,30 @@ def main():
         # print(dfzz.shape)
         dfzz = zeroshot_datum(df2)
 
+    testing = False  # testing number of words between folds
+    if testing:
+        skf = KFold(n_splits=10, shuffle=False)
+        folds = [t[1] for t in skf.split(np.arange(len(dfzz)))]
+        fold_cat = np.zeros(len(dfzz))
+        for i in range(0, len(folds)):
+            for row in folds[i]:
+                fold_cat[row] = i  # turns into fold category
+        dfzz.loc[:, "fold"] = fold_cat
+
+        fold_index = pd.DataFrame(
+            {
+                "end": dfzz.groupby(dfzz.fold + 1)["index"].max(),
+                "start": dfzz.groupby(dfzz.fold + 1)["index"].min(),
+            }
+        )
+        fold_index["diff"] = fold_index.start.shift(-1) - fold_index.end
+
+        breakpoint()
+
     saving = False
-    if "glove50" in args.emb_type and "concat" in args.output_parent_dir:
+    if (
+        "glove50" in args.emb_type or "symbolic" in args.emb_type
+    ) and "concat" in args.output_parent_dir:
         # getting the folds
         skf = KFold(n_splits=10, shuffle=False)
         folds = [t[1] for t in skf.split(np.arange(len(dfzz)))]
@@ -400,6 +469,18 @@ def main():
             with open(filename, "wb") as fh:
                 pickle.dump(new_datum, fh)
             breakpoint()
+
+    # if "gpt" in args.emb_type:
+    #     print("Stricter 0shot")
+    #     # getting rid of words with context from previous folds
+    #     prev_index = pd.DataFrame(dfzz.groupby(dfzz.fold + 1)["index"].max())
+    #     prev_index.reset_index(inplace=True)
+    #     prev_index.rename(columns={"index": "prev_fold_max"}, inplace=True)
+    #     prev_index.loc[9, "fold"] = 0
+    #     prev_index.loc[9, "prev_fold_max"] = -10
+    #     dfzz = dfzz.merge(prev_index, left_on="fold", right_on="fold")
+    #     dfzz = dfzz[dfzz["index"] - 10 > dfzz.prev_fold_max]
+    #     dfzz.drop(columns=["prev_fold_max"], inplace=True)
 
     datum = dfzz
 

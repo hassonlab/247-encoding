@@ -11,6 +11,8 @@ from numba import jit, prange
 from scipy import stats
 from scipy.spatial.distance import cdist
 
+from himalaya.ridge import GroupRidgeCV, RidgeCV
+from himalaya.ridge import ColumnTransformerNoStack
 from sklearn.model_selection import KFold
 from sklearn.linear_model import LinearRegression
 from sklearn.pipeline import make_pipeline
@@ -49,8 +51,32 @@ def encColCorr(CA, CB):
     return r, p, t
 
 
+def cv_leave_one_out(args, X, Y, col_idx):
+    Xtra = X[X[:, col_idx] == 0, :]  # training on zeros
+    Xtes = X[X[:, col_idx] == 1, :]  # testing on ones
+    Ytra = Y[X[:, col_idx] == 0, :]
+    YTES = Y[X[:, col_idx] == 1, :]
+
+    if args.pca_to == 0:
+        print("LM with no pca")
+        model = make_pipeline(LinearRegression())
+    else:
+        print(f"PCA from {Xtra.shape[1]} to {args.pca_to}")
+        model = make_pipeline(PCA(args.pca_to, whiten=True), LinearRegression())
+    model.fit(Xtra, Ytra)
+    YHAT = model.predict(Xtes)
+    YHAT_NN = YHAT
+    YHAT_NNT = YHAT
+
+    return YHAT, YHAT_NN, YHAT_NNT, YTES
+
+
 def cv_lm_003(
-    X, Y, kfolds, near_neighbor=False, near_neighbor_test=True, given_fold=None
+    args,
+    X,
+    Y,
+    fold_num,
+    given_fold=None,
 ):
     """Cross-validated predictions from a regression model using sequential
         block partitions with nuisance regressors included in the training
@@ -80,22 +106,22 @@ def cv_lm_003(
             folds[int(fold)] = np.append(folds[int(fold)], index)
     else:
         print("Kfold")
-        skf = KFold(n_splits=kfolds, shuffle=False)
+        skf = KFold(n_splits=fold_num, shuffle=False)
         folds = [t[1] for t in skf.split(np.arange(nSamps))]
 
     YHAT = np.zeros((nSamps, nChans))
     YTES = np.zeros((nSamps, nChans))
-    YHAT_NN = np.zeros((nSamps, nChans)) if near_neighbor else None
-    YHAT_NNT = np.zeros((nSamps, nChans)) if near_neighbor_test else None
+    YHAT_NN = np.zeros((nSamps, nChans))
+    YHAT_NNT = np.zeros((nSamps, nChans))
 
     # Go through each fold, and split
-    for i in range(kfolds):
+    for i in range(fold_num):
         # Shift the number of folds for this iteration
         # [0 1 2 3 4] -> [1 2 3 4 0] -> [2 3 4 0 1]
         #                       ^ dev fold
         #                         ^ test fold
         #                 | - | <- train folds
-        folds_ixs = np.roll(range(kfolds), i)
+        folds_ixs = np.roll(range(fold_num), i)
         test_fold = folds_ixs[-1]
         train_folds = folds_ixs[:-1]
 
@@ -111,49 +137,139 @@ def cv_lm_003(
         # Ytes = yscaler.transform(Ytes)
         YTES[test_index, :] = Ytes
 
+        if "-br" in args.output_parent_dir:
+            pass
+            #     print("Banded Ridge")
+            #     ct = ColumnTransformerNoStack(
+            #         [
+            #             ("cur_arb", StandardScaler(), slice(0, 50)),
+            #             ("cur_pos", StandardScaler(), [50]),
+            #             ("cur_stop", StandardScaler(), [51]),
+            #             ("cur_shape", StandardScaler(), [52]),
+            #             ("cur_prefix", StandardScaler(), [53]),
+            #             ("cur_suffix", StandardScaler(), [54]),
+            #         ]
+            #     )
+            # model = make_pipeline(
+            #     ct,
+            #     GroupRidgeCV(groups="input", cv=9),
+            # )
+
+        elif "-r" in args.output_parent_dir:
+            pass
+            # print("Ridge")
+            # model = make_pipeline(StandardScaler(), RidgeCV())
         # Fit model
-        model = make_pipeline(PCA(50, whiten=True), LinearRegression())
+        elif args.pca_to == 0:
+            print("LM with no pca")
+            model = make_pipeline(LinearRegression())
+        elif "9-3" in args.output_parent_dir:
+            print(f"PCA from {Xtra.shape[1]} to {args.pca_to}")
+            model = make_pipeline(
+                StandardScaler(),
+                PCA(args.pca_to, whiten=True),
+                LinearRegression(),
+            )
+        elif "9-4" in args.output_parent_dir:
+            print(f"PCA from {Xtra.shape[1]} to {args.pca_to}")
+            model = make_pipeline(
+                StandardScaler(),
+                PCA(args.pca_to, whiten=True),
+                LinearRegression(fit_intercept=False),
+            )
+        elif "9-5" in args.output_parent_dir:
+            print(f"PCA from {Xtra.shape[1]} to {args.pca_to}")
+            model = make_pipeline(
+                PCA(args.pca_to, whiten=True),
+                LinearRegression(),
+            )
+
         model.fit(Xtra, Ytra)
+
+        if "-br-" in args.output_parent_dir:
+            if args.output_parent_dir.endswith("br-arb"):
+                model[1].coef_[50:55, :] = 0
+            elif args.output_parent_dir.endswith("br-pos"):
+                model[1].coef_[0:50, :] = 0
+                model[1].coef_[51:, :] = 0
+            elif args.output_parent_dir.endswith("br-stop"):
+                model[1].coef_[0:51, :] = 0
+                model[1].coef_[52:, :] = 0
+            elif args.output_parent_dir.endswith("br-shape"):
+                model[1].coef_[0:52, :] = 0
+                model[1].coef_[53:, :] = 0
+            elif args.output_parent_dir.endswith("br-prefix"):
+                model[1].coef_[0:53, :] = 0
+                model[1].coef_[54, :] = 0
+            elif args.output_parent_dir.endswith("br-suffix"):
+                model[1].coef_[0:54, :] = 0
 
         # Predict
         foldYhat = model.predict(Xtes)
         YHAT[test_index, :] = foldYhat.reshape(-1, nChans)
 
         ###### regular near neighbor
-        if near_neighbor:
+        if "concat" not in args.output_parent_dir:
+            # near neighbor
             nbrs = NearestNeighbors(n_neighbors=1, metric="cosine")
             nbrs.fit(Xtra)
             _, I = nbrs.kneighbors(Xtes)
             XtesNN = Xtra[I].squeeze()
             YHAT_NN[test_index, :] = model.predict(XtesNN)
+            # YHAT_NN[test_index, :] = model.predict(Xtes) #HACK for is_stop
 
-        if near_neighbor_test:
+            # near neighbor test
             nbrs = NearestNeighbors(n_neighbors=1, metric="cosine")
             nbrs.fit(Xtes)
             _, I = nbrs.kneighbors()
             XtesNNT = Xtes[I].squeeze()
             YHAT_NNT[test_index, :] = model.predict(XtesNNT)
+            # YHAT_NNT[test_index, :] = model.predict(Xtes) #HACK for is_stop
 
-        ##### for glove concatenation (only nearestneighbors on the last 50d)
-        # Xtran = Xtra[:, -50:]
-        # Xtesn = Xtes[:, -50:]
-        # Xtesc = Xtes[:, :-50]
+        ###### concat near neighbor (only NN on the last word embedding)
+        else:
+            if "glove" in args.output_parent_dir:
+                last_idx = -50
+            elif "symbolic-8" in args.output_parent_dir:
+                last_idx = -125
+            elif "symbolic-9" in args.output_parent_dir:
+                last_idx = -75
+            elif "symbolic-12" in args.output_parent_dir:
+                last_idx = -50
+            elif "symbolic-13" in args.output_parent_dir:
+                last_idx = -11
+            elif "symbolic-14" in args.output_parent_dir:
+                last_idx = -1
+            elif "symbolic-15" in args.output_parent_dir:
+                last_idx = -16
+            elif "symbolic-16" in args.output_parent_dir:
+                last_idx = -19
+            elif "symbolic-17" in args.output_parent_dir:
+                last_idx = -28
 
-        # if near_neighbor:
-        #     nbrs = NearestNeighbors(n_neighbors=1, metric="cosine")
-        #     nbrs.fit(Xtran)
-        #     _, I = nbrs.kneighbors(Xtesn)
-        #     Xtesn = Xtran[I].squeeze()
-        #     XtesNN = np.hstack((Xtesc,Xtesn))
-        #     YHAT_NN[test_index, :] = model.predict(XtesNN)
+            else:
+                print("Wierd stuff")
+                breakpoint()
 
-        # if near_neighbor_test:
-        #     nbrs = NearestNeighbors(n_neighbors=1, metric="cosine")
-        #     nbrs.fit(Xtesn)
-        #     _, I = nbrs.kneighbors()
-        #     Xtesn = Xtesn[I].squeeze()
-        #     XtesNNT = np.hstack((Xtesc,Xtesn))
-        #     YHAT_NNT[test_index, :] = model.predict(XtesNNT)
+            Xtran = Xtra[:, last_idx:]
+            Xtesn = Xtes[:, last_idx:]
+            Xtesc = Xtes[:, :last_idx]
+
+            # near neighbor
+            nbrs = NearestNeighbors(n_neighbors=1, metric="cosine")
+            nbrs.fit(Xtran)
+            _, I = nbrs.kneighbors(Xtesn)
+            Xtesn = Xtran[I].squeeze()  # HACK comment out for is_stop
+            XtesNN = np.hstack((Xtesc, Xtesn))
+            YHAT_NN[test_index, :] = model.predict(XtesNN)
+
+            # near neighbor test
+            nbrs = NearestNeighbors(n_neighbors=1, metric="cosine")
+            nbrs.fit(Xtesn)
+            _, I = nbrs.kneighbors()
+            Xtesn = Xtesn[I].squeeze()  # HACK comment out for is_stop
+            XtesNNT = np.hstack((Xtesc, Xtesn))
+            YHAT_NNT[test_index, :] = model.predict(XtesNNT)
 
     return YHAT, YHAT_NN, YHAT_NNT, YTES
 
@@ -170,7 +286,9 @@ def fit_model(X, y):
 
 
 @jit(nopython=True)
-def build_Y(onsets, convo_onsets, convo_offsets, brain_signal, lags, window_size):
+def build_Y(
+    onsets, convo_onsets, convo_offsets, brain_signal, lags, window_size
+):
     """[summary]
 
     Args:
@@ -260,10 +378,25 @@ def encode_lags_numba(args, X, Y, fold):
     # X = np.diff(X, axis=0)
     # Y = np.diff(Y, axis=0)
 
-    PY_hat, PY_hat_nn, PY_hat_nnt, Ytes = cv_lm_003(
-        X, Y, 10, args.test_near_neighbor, args.test_near_neighbor, fold
-    )
-    rp, _, _ = encColCorr(Y, PY_hat)
+    if "symbolic-9-0shot" in args.output_parent_dir:
+        print("Deleting zero columns")
+        X = X[:, (X.sum(axis=0) > 0).astype("bool")]  # deleting zero columns
+
+        first_partial = args.output_parent_dir[
+            args.output_parent_dir.find("symbolic-9-0shot") + 16 :
+        ]
+        if first_partial.find("concat") > 0:
+            first_partial = first_partial[: first_partial.find("concat") - 1]
+        col_idx = int(first_partial)
+        assert col_idx < 0
+        print(f"Taking index {col_idx}")
+        PY_hat, PY_hat_nn, PY_hat_nnt, Ytes = cv_leave_one_out(
+            args, X, Y, col_idx
+        )
+        rp = []
+    else:
+        PY_hat, PY_hat_nn, PY_hat_nnt, Ytes = cv_lm_003(args, X, Y, 10, fold)
+        rp, _, _ = encColCorr(Y, PY_hat)
 
     if args.save_pred:
         fn = os.path.join(args.full_output_dir, args.current_elec + ".pkl")
@@ -411,7 +544,6 @@ def encoding_regression_pr(args, datum, elec_signal, name):
 
 
 def encoding_regression(args, datum, elec_signal, name):
-
     output_dir = args.full_output_dir
     datum = datum[datum.adjusted_onset.notna()]
 
@@ -456,6 +588,8 @@ def setup_environ(args):
     if args.emb_type == "glove50":
         stra = ""
         args.layer_idx = 1
+    elif args.emb_type == "symbolic":
+        stra = ""
 
     # TODO make an arg
     zeroshot = ""
@@ -475,7 +609,9 @@ def setup_environ(args):
     )
     args.load_emb_file = args.emb_file.replace("__", "_")
 
-    args.signal_file = "_".join([str(args.sid), args.pkl_identifier, "signal.pkl"])
+    args.signal_file = "_".join(
+        [str(args.sid), args.pkl_identifier, "signal.pkl"]
+    )
     args.electrode_file = "_".join([str(args.sid), "electrode_names.pkl"])
     args.stitch_file = "_".join(
         [str(args.sid), args.pkl_identifier, "stitch_index.pkl"]

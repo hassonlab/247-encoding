@@ -72,7 +72,9 @@ def make_input_from_tokens(token_list):
     Returns:
         [type]: [description]
     """
-    windows = [tuple(token_list[x : x + 2]) for x in range(len(token_list) - 2 + 1)]
+    windows = [
+        tuple(token_list[x : x + 2]) for x in range(len(token_list) - 2 + 1)
+    ]
 
     return windows
 
@@ -122,7 +124,9 @@ def add_signal_length(args, df):
     df["conv_signal_length"] = np.nan
 
     for idx, conv in enumerate(df.conversation_id.unique()):
-        df.loc[df.conversation_id == conv, "conv_signal_length"] = signal_lengths[idx]
+        df.loc[
+            df.conversation_id == conv, "conv_signal_length"
+        ] = signal_lengths[idx]
 
     return df
 
@@ -142,14 +146,15 @@ def normalize_embeddings(args, df):
 
     try:
         k = normalize(k, norm=args.normalize, axis=1)
-    except ValueError:
         df["embeddings"] = k.tolist()
+    except ValueError:
+        print("Error in normalization")
+        breakpoint()
 
     return df
 
 
 def concat_emb(datum, shift_num=10):
-
     print(f"Concatenating prev {shift_num} embeddings for glove")
     step = 1
     datum["embeddings_shifted"] = datum.embeddings
@@ -196,28 +201,41 @@ def read_datum(args):
     #     df['adjusted_offset'], df['offset'] = df['offset'], np.nan
 
     df = add_convo_onset_offset(args, df)
-    if args.emb_type == "glove50":
+    if args.emb_type == "glove50" or args.emb_type == "symbolic":
         df = df.dropna(subset=["embeddings"])
     else:
         df = drop_nan_embeddings(df)
         df = remove_punctuation(df)
     # df = df[~df['glove50_embeddings'].isna()]
 
-    if "glove50" in args.emb_type and "concat" in args.output_parent_dir:
+    if (
+        "glove50" in args.emb_type or "symbolic" in args.emb_type
+    ) and "concat" in args.output_parent_dir:
         if "concat10" in args.output_parent_dir:
             df = concat_emb(df, 10)
         elif "concat5" in args.output_parent_dir:
             df = concat_emb(df, 5)
         elif "concat20" in args.output_parent_dir:
             df = concat_emb(df, 20)
+        elif "concat1" in args.output_parent_dir:
+            df = concat_emb(df, 1)
+        elif "concat2" in args.output_parent_dir:
+            df = concat_emb(df, 2)
+        elif "concat3" in args.output_parent_dir:
+            df = concat_emb(df, 3)
+        elif "concat4" in args.output_parent_dir:
+            df = concat_emb(df, 4)
+        elif "concat-1" in args.output_parent_dir:
+            df = concat_emb(df, -1)
 
     if "gpt2-xl" in args.emb_type and "shift-emb" in args.output_parent_dir:
         print("Shifting embeddings for gpt2-xl")
         df2 = df.copy()
-        df2['embeddings'] = df2.embeddings.shift(-1)
-        df2 = df2[df2.fold.shift(-1) == df2.fold]
+        df2["embeddings"] = df2.embeddings.shift(-1)
+        if args.context_length == 1023:  # within fold
+            df2 = df2[df2.fold.shift(-1) == df2.fold]
         df = df2
-        df.dropna(axis=0, subset=['embeddings'], inplace=True) 
+        df.dropna(axis=0, subset=["embeddings"], inplace=True)
 
     # Filter out criteria
     NONWORDS = {"hm", "huh", "mhm", "mm", "oh", "uh", "uhuh", "um"}
@@ -243,7 +261,7 @@ def read_datum(args):
         except KeyError:
             pass
 
-    if not args.normalize:
+    if args.normalize:
         df = normalize_embeddings(args, df)
 
     return df

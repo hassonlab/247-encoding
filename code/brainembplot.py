@@ -15,29 +15,39 @@ from statsmodels.stats import multitest
 # from statsmodels.stats import stattools
 
 n_workers = 4
-nperms = 5000
+nperms = 0
 pdir = "/scratch/gpfs/kw1166/0shot-encoding/results/podcast/"
 
-dirs = [
-    "0shot-zz-podcast-full-777-gpt2-xl-e23/777/",
-    "0shot-zz-podcast-full-777-gpt2-xl-e23-sh/777/",
-]
+# dirs = [
+#     "0shot-zz-podcast-full-777-gpt2-xl-e23/777/",
+#     "0shot-zz-podcast-full-777-gpt2-xl-e23-sh/777/",
+# ]
 
 # dirs = ['0shot-zz-podcast-full-777-gpt2-xl-717l/777/']
 # dirs = ['0shot-zz-podcast-full-777-gpt2-xl-717lfdp/777/']
 # dirs = ['0shot-zz-podcast-full-777-gpt2-xl-717fdp/777/']
 # dirs = ['0shot-zz-podcast-full-777-gpt2-xl-717detrend/777/']
-dirs = ["0shot-zz-podcast-full-777-gpt2-xl-717ldp1/777/"]
+# dirs = ["0shot-zz-podcast-full-777-gpt2-xl-717ldp1/777/"]
 
 # dirs = [
-#     "0shot-kw-podcast-full-777-gpt2-xl-fold/777/",
-#     "0shot-kw-podcast-full-777-gpt2-xl-fold-sh/777/",
+#     "0shot-kw-podcast-full-777-gpt2-xl-shift-emb/777/",
+#     "0shot-kw-podcast-full-777-gpt2-xl-shift-emb-sh/777/",
+# ]
+
+# dirs = [
+#     "0shot-kw-podcast-full-777-gpt2-xl-48-test/777/",
+#     "0shot-kw-podcast-full-777-gpt2-xl-fold-aligned-sh/777/",
 # ]
 
 dirs = [
-    "0shot-kw-podcast-full-777-glove50-aligned/777/",
-    "0shot-kw-podcast-full-777-glove50-aligned-sh/777/",
+    "0shot-kw-podcast-full-777-symbolic-9-9-4/777/",
+    "0shot-kw-podcast-full-777-symbolic-9-sh/777/",
 ]
+
+# dirs = [
+#     "0shot-kw-podcast-full-777-glove50-1-test/777/",
+#     "0shot-kw-podcast-full-777-glove50-aligned-sh/777/",
+# ]
 
 # Create experiments from master list
 elecs = pd.read_csv("data/elec_masterlist.csv")
@@ -152,7 +162,7 @@ def run_exp(experiment, elecs):
     ax.set(xlabel="Lag (s)", ylabel="Correlation (r+se)")
     # ax.set_ylim([-0.05, 0.25])
 
-    for i, resultdir in enumerate(dirs):
+    for i, resultdir in enumerate(dirs_new):
         lags = []
         signal = []
         pred_signal = []
@@ -373,5 +383,13 @@ def run_exp(experiment, elecs):
 
 
 if __name__ == "__main__":
+    dirs_new = dirs
     with Pool(min(n_workers, len(experiments))) as p:
         p.starmap(run_exp, experiments.items())
+
+    # for idx in np.arange(1,62): # for looping
+    #     custom = f"{idx:02}"
+    #     dirs_new = dirs.copy()
+    #     dirs_new[0] = dirs_new[0] % idx
+    #     with Pool(min(n_workers, len(experiments))) as p:
+    #         p.starmap(run_exp, experiments.items())
