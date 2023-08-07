@@ -291,7 +291,13 @@ def load_glove_embeddings(args):
 
     glove_base_df = load_datum(glove_base_df_path)
     glove_emb_df = load_datum(glove_emb_df_path)
-    glove_df = pd.merge(glove_base_df, glove_emb_df, left_index=True, right_index=True)
+    if len(glove_base_df) != len(glove_emb_df):  # HACK
+        glove_df = pd.merge(
+            glove_base_df, glove_emb_df, left_index=True, right_index=True
+        )
+    else:
+        glove_base_df.reset_index(drop=False, inplace=True)
+        glove_df = pd.concat([glove_base_df, glove_emb_df], axis=1)
     glove_df = glove_df[glove_df[f"in_{args.emb_type}"]]
     glove_df = glove_df.loc[:, ["adjusted_onset", "word", "embeddings"]]
 
@@ -315,7 +321,6 @@ def process_embeddings(args, df):
     else:
         df = drop_nan_embeddings(df)
         df = remove_punctuation(df)
-
     # add prediction embeddings (force to glove)
     if "glove" in args.emb_mod:
         mask = df[f"in_glove50"] & df[f"{args.emb_type}_token_is_root"]
@@ -326,11 +331,9 @@ def process_embeddings(args, df):
             errors="ignore",
             inplace=True,
         )  # delete current embeddings
-
         glove_df = load_glove_embeddings(args)
         df = df[df.adjusted_onset.notna()]
         glove_df = glove_df[glove_df.adjusted_onset.notna()]
-        breakpoint()
         df = df.merge(glove_df, how="inner", on=["adjusted_onset", "word"])
 
     # Embedding manipulation
@@ -452,16 +455,40 @@ def mod_datum_by_preds(args, datum):
         rank, _ = mod_datum_arg_parse(args.datum_mod, "correct", "5")
         datum = datum[datum.true_pred_rank <= rank]  # correct
         print(f"Selected {len(datum.index)} top{rank} correct words")
-    elif "improb" in args.datum_mod:  # select low pred_prob words
-        percentile, _ = mod_datum_arg_parse(args.datum_mod, "improb", "30")
-        bot = datum.true_pred_prob.quantile(percentile / 100)
-        datum = datum[datum.true_pred_prob <= bot]
-        print(f"Selected {len(datum.index)} bot pred prob words")
-    elif "prob" in args.datum_mod:  # select high pred_prob words
+    elif "prob" in args.datum_mod:  # select low pred_prob words
         percentile, _ = mod_datum_arg_parse(args.datum_mod, "prob", "30")
         top = datum.true_pred_prob.quantile(1 - percentile / 100)
-        datum = datum[datum.true_pred_prob >= top]
-        print(f"Selected {len(datum.index)} top pred prob words")
+        bot = datum.true_pred_prob.quantile(percentile / 100)
+        datum_top = datum[datum.true_pred_prob >= top].copy()
+        datum_bot = datum[datum.true_pred_prob <= bot].copy()
+        datum_top["word_num"] = datum_top.groupby(datum_top.word).cumcount() + 1
+        datum_bot["word_num"] = datum_bot.groupby(datum_bot.word).cumcount() + 1
+        if "numaligned-improb" in args.datum_mod:  # improb num aligned with prob
+            datum = datum_bot.merge(
+                datum_top.loc[:, ("word", "word_num")],
+                how="inner",
+                on=["word", "word_num"],
+            )
+            print(f"Selected {len(datum.index)} bot pred prob words")
+        elif "numaligned-prob" in args.datum_mod:  # improb num aligned with prob
+            datum = datum_top.merge(
+                datum_bot.loc[:, ("word", "word_num")],
+                how="inner",
+                on=["word", "word_num"],
+            )
+            print(f"Selected {len(datum.index)} top pred prob words")
+        elif "aligned-improb" in args.datum_mod:  # improb aligned with prob
+            datum = datum_bot[datum_bot.word.isin(datum_top.word.unique())]
+            print(f"Selected {len(datum.index)} bot pred prob words")
+        elif "aligned-prob" in args.datum_mod:  # prob aligned with improb
+            datum = datum_top[datum_top.word.isin(datum_bot.word.unique())]
+            print(f"Selected {len(datum.index)} top pred prob words")
+        elif "improb" in args.datum_mod:  # improb
+            datum = datum_bot
+            print(f"Selected {len(datum.index)} bot pred prob words")
+        elif "prob" in args.datum_mod:  # prob
+            datum = datum_top
+            print(f"Selected {len(datum.index)} top pred prob words")
 
     # elif args.datum_mod == emb_type + "-pred": # for incorrectly predicted words, replace with top 1 pred (only used for podcast glove)
     #     glove = api.load('glove-wiki-gigaword-50')
@@ -522,7 +549,11 @@ def mod_datum(args, datum):
     #     raise Exception('Invalid Datum Modification')
 
     # Average Embeddings per word
-    if "glove" not in args.emb_type and "glove" not in args.emb_mod:
+    if (
+        "glove" not in args.emb_type  # glove emb
+        and "glove50" not in args.align_with  # aligned with glove emb
+        and "glove" not in args.emb_mod  # replaced with glove emb (already aligned)
+    ):
         if datum[f"{args.emb_type}_token_is_root"].sum() < len(datum):
             datum = ave_emb(datum)  # average embs per word
 

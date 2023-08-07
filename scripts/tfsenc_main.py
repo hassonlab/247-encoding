@@ -231,7 +231,7 @@ def parallel_encoding(args, electrode_info, datum, stitch_index, parallel=True):
         p = Pool(processes=get_cpu_count())  # multiprocessing
 
         # Skipping elecs already done
-        if os.path.exists(summary_file):  # previous job
+        if os.path.exists(args.full_output_dir):  # previous job
             print("Previously ran the same job, checking for elecs done")
             electrode_info = skip_elecs_done(args, electrode_info)
 
@@ -273,7 +273,7 @@ def main():
 
     # Processing significant electrodes or individual subjects
     electrode_info = process_subjects(args)
-    parallel_encoding(args, electrode_info, datum, stitch_index, False)
+    parallel_encoding(args, electrode_info, datum, stitch_index)
 
     return
 
