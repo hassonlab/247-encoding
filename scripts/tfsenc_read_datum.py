@@ -4,7 +4,7 @@ import string
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import normalize
-from utils import load_pickle
+from utils import load_pickle, save_pickle
 
 # import gensim.downloader as api
 # import re
@@ -316,7 +316,7 @@ def process_embeddings(args, df):
     """
 
     # drop NaN / None embeddings
-    if args.emb_type == "glove50":
+    if "glove50" in args.emb_type:
         df = df.dropna(subset=["embeddings"])
     else:
         df = drop_nan_embeddings(df)
@@ -461,16 +461,46 @@ def mod_datum_by_preds(args, datum):
         bot = datum.true_pred_prob.quantile(percentile / 100)
         datum_top = datum[datum.true_pred_prob >= top].copy()
         datum_bot = datum[datum.true_pred_prob <= bot].copy()
-        datum_top["word_num"] = datum_top.groupby(datum_top.word).cumcount() + 1
-        datum_bot["word_num"] = datum_bot.groupby(datum_bot.word).cumcount() + 1
-        if "numaligned-improb" in args.datum_mod:  # improb num aligned with prob
+        if percentile == 30:  # mid
+            mid_low = datum.true_pred_prob.quantile(35 / 100)
+            mid_high = datum.true_pred_prob.quantile(65 / 100)
+            datum_mid = datum[
+                (datum.true_pred_prob >= mid_low) & (datum.true_pred_prob <= mid_high)
+            ].copy()
+        # datum_top["word_num"] = datum_top.groupby(datum_top.word).cumcount() + 1
+        # datum_bot["word_num"] = datum_bot.groupby(datum_bot.word).cumcount() + 1
+        datum_top["word_num"] = (
+            datum_top.sort_values(["word", "true_pred_prob"], ascending=False)
+            .groupby("word")
+            .cumcount()
+            + 1
+        )
+        datum_bot["word_num"] = (
+            datum_bot.sort_values(["word", "true_pred_prob"], ascending=True)
+            .groupby("word")
+            .cumcount()
+            + 1
+        )
+        saving_datum = False
+        if saving_datum:
+            save_pickle(
+                datum_top,
+                f"../247-plotting/data/plotting/paper-prob-improb/datums/{args.sid}-glove50-top30.pkl",
+            )
+            save_pickle(
+                datum_bot,
+                f"../247-plotting/data/plotting/paper-prob-improb/datums/{args.sid}-glove50-bot30.pkl",
+            )
+            breakpoint()
+
+        if "alignednum-improb" in args.datum_mod:  # improb num aligned with prob
             datum = datum_bot.merge(
                 datum_top.loc[:, ("word", "word_num")],
                 how="inner",
                 on=["word", "word_num"],
             )
             print(f"Selected {len(datum.index)} bot pred prob words")
-        elif "numaligned-prob" in args.datum_mod:  # improb num aligned with prob
+        elif "alignednum-prob" in args.datum_mod:  # improb num aligned with prob
             datum = datum_top.merge(
                 datum_bot.loc[:, ("word", "word_num")],
                 how="inner",
@@ -483,6 +513,9 @@ def mod_datum_by_preds(args, datum):
         elif "aligned-prob" in args.datum_mod:  # prob aligned with improb
             datum = datum_top[datum_top.word.isin(datum_bot.word.unique())]
             print(f"Selected {len(datum.index)} top pred prob words")
+        elif "middle" in args.datum_mod:
+            datum = datum_mid
+            print(f"Selected {len(datum.index)} mid pred prob words")
         elif "improb" in args.datum_mod:  # improb
             datum = datum_bot
             print(f"Selected {len(datum.index)} bot pred prob words")
@@ -578,9 +611,13 @@ def read_datum(args, stitch):
     emb_df = load_datum(args.emb_df_path)
     base_df = load_datum(args.base_df_path)
 
-    df = pd.merge(
-        base_df, emb_df, left_index=True, right_index=True
-    )  # TODO Needs testing (either bert_utterance or whisper)
+    if len(emb_df) != len(base_df):
+        df = pd.merge(
+            base_df, emb_df, left_index=True, right_index=True
+        )  # TODO Needs testing (either bert_utterance or whisper)
+    else:
+        base_df.reset_index(drop=False, inplace=True)
+        df = pd.concat([base_df, emb_df], axis=1)
     print(f"After loading: Datum loads with {len(df)} words")
 
     df = process_conversations(args, df, stitch)

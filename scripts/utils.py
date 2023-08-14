@@ -34,6 +34,28 @@ def load_pickle(file):
     return datum
 
 
+def save_pickle(item, file_name):
+    """Write 'item' to 'file_name.pkl'
+
+    Args:
+        item (pandas.DataFrame): dataframe
+        filename (string): pickle filename
+
+    Returns:
+        None
+
+    """
+    add_ext = "" if file_name.endswith(".pkl") else ".pkl"
+
+    file_name = file_name + add_ext
+
+    os.makedirs(os.path.dirname(file_name), exist_ok=True)
+
+    with open(file_name, "wb") as fh:
+        pickle.dump(item, fh)
+    return
+
+
 def write_config(dictionary):
     """Write configuration to a file
     Args:

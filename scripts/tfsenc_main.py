@@ -167,26 +167,13 @@ def single_electrode_encoding(electrode, args, datum, stitch_index):
     if args.project_id == "podcast":  # podcast
         fold_cat_prod = []
         fold_cat_comp = get_kfolds(comp_X, args.fold_num)
-    elif (
-        "single-conv" in args.datum_mod or args.conversation_id or args.sid == 798
-    ):  # 1 conv
+    elif len(prod_X) <= 1000 or len(comp_X) <= 1000:
+        print(f"{args.sid} {elec_name} Prod: {len(prod_X)} Comp: {len(comp_X)}")
+        return (sid, elec_name, len(prod_X), len(comp_X))
+    else:
+        # kfolds
         fold_cat_prod = get_kfolds(prod_X, args.fold_num)
         fold_cat_comp = get_kfolds(comp_X, args.fold_num)
-    elif (
-        args.project_id == "tfs"
-        and elec_datum.conversation_id.nunique() < args.fold_num
-    ):  # num of convos less than num of folds (special case for 7170)
-        print(f"{args.sid} {elec_name} has less conversations than the number of folds")
-        return (args.sid, elec_name, 1, 1)
-    else:
-        # Get groupkfolds
-        fold_cat_prod, fold_cat_comp = get_groupkfolds(elec_datum, X, Y, args.fold_num)
-        if (
-            len(np.unique(fold_cat_prod)) < args.fold_num
-            or len(np.unique(fold_cat_comp)) < args.fold_num
-        ):  # need both prod/comp words in all folds
-            print(f"{args.sid} {elec_name} failed groupkfold")
-            return (args.sid, elec_name, 1, 1)
 
     elec_name = str(sid) + "_" + elec_name
     print(f"{args.sid} {elec_name} Prod: {len(prod_X)} Comp: {len(comp_X)}")
