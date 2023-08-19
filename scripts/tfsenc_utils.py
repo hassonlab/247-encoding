@@ -54,7 +54,9 @@ def cv_lm_003_prod_comp(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag):
     else:
         print("running regression with best_lag")
 
-    if args.pca_to == 0 or "ridge" in args.model_mod:
+    if args.model_mod and "ridge" in args.model_mod:
+        print(f"ridge, emb_dim = {Xtes.shape[1]}")
+    elif args.pca_to == 0:
         print(f"No PCA, emb_dim = {Xtes.shape[1]}")
     else:
         print(f"PCA from {Xtes.shape[1]} to {args.pca_to}")
@@ -75,7 +77,7 @@ def cv_lm_003_prod_comp(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag):
         Ytraf -= np.mean(Ytraf, axis=0)
 
         # Fit model
-        if "ridge" in args.model_mod:
+        if args.model_mod and "ridge" in args.model_mod:
             model = make_pipeline(StandardScaler(), RidgeCV())
         elif args.pca_to == 0 or "nopca" in args.datum_mod:
             model = make_pipeline(StandardScaler(), LinearRegression())

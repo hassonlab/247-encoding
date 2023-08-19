@@ -587,8 +587,7 @@ def mod_datum(args, datum):
         and "glove50" not in args.align_with  # aligned with glove emb
         and "glove" not in args.emb_mod  # replaced with glove emb (already aligned)
     ):
-        if datum[f"{args.emb_type}_token_is_root"].sum() < len(datum):
-            datum = ave_emb(datum)  # average embs per word
+        datum = ave_emb(datum)  # average embs per word
 
     # Normalize Embeddings
     if args.normalize:
