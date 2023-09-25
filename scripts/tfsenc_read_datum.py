@@ -6,8 +6,36 @@ import pandas as pd
 from sklearn.preprocessing import normalize
 from utils import load_pickle, save_pickle
 
-# import gensim.downloader as api
+import gensim.downloader as api
+
 # import re
+
+
+def get_vector(x, glove):
+    try:
+        return glove.get_vector(x)
+    except KeyError:
+        return None
+
+
+def get_vectors(x, glove, length):
+    preds = "".join(x)  # join predictions
+    preds = preds.lower()  # lowercase
+    preds = preds.translate(
+        str.maketrans("", "", '!"#$%&\()*+,-./:;<=>?@[\\]^_`{|}~')
+    )  # remove all punc besides single quote
+    preds = preds.split()  # split into words
+
+    emb = np.array([])
+    for pred in preds:
+        if len(emb) == length * 50:
+            return emb
+        try:
+            emb = np.append(emb, glove.get_vector(pred))
+        except KeyError:
+            pass
+
+    return None
 
 
 def remove_punctuation(df):
@@ -130,27 +158,29 @@ def concat_emb(args, datum, mode="concat-emb"):
     before_shift_num = len(datum.index)
     datum2 = datum.copy()  # setting copy to avoid warning
     datum2.loc[:, "embeddings_shifted"] = datum2.embeddings
+    # datum2.loc[:, "pred_shifted"] = datum2.true_pred_prob
+    # datum2.loc[:, "rank_shifted"] = datum2.true_pred_rank
     for i in np.arange(shift_num):
         datum2.loc[:, "embeddings_shifted"] = datum2.embeddings_shifted.shift(step)
-        if (
-            "blenderbot-small" in args.emb_type.lower()
-            or "bert" in args.emb_type.lower()
-        ):
-            datum2 = datum2[
-                (
-                    datum2.production.shift(step) == datum2.production
-                    and datum2.conversation_id.shift(step) == datum2.conversation_id
-                )
-            ]
-        else:
-            datum2 = datum2[
-                datum2.conversation_id.shift(step) == datum2.conversation_id
-            ]
+        # datum2.loc[:, "pred_shifted"] = datum2.pred_shifted.shift(step)
+        # datum2.loc[:, "rank_shifted"] = datum2.rank_shifted.shift(step)
+
+        datum2 = datum2[~datum2.embeddings_shifted.isna()]
 
         def concat(x):
             return np.concatenate((x["embeddings"], x["embeddings_shifted"]))
 
         datum2.loc[:, "embeddings"] = datum2.apply(concat, axis=1)
+        # datum2.loc[:, "true_pred_prob"] = (
+        #     datum2.true_pred_prob + datum2.pred_shifted
+        # )
+        # datum2.loc[:, "true_pred_rank"] = (
+        #     datum2.true_pred_rank + datum2.rank_shifted
+        # )
+
+    # datum2.loc[:, "true_pred_prob"] = datum2.true_pred_prob / (shift_num + 1)
+    # datum2.loc[:, "true_pred_rank"] = datum2.true_pred_rank / (shift_num + 1)
+
     datum = datum2  # reassign back to datum
     print(f"Concatenating resulted in {before_shift_num - len(datum.index)} less words")
 
@@ -238,6 +268,28 @@ def ave_emb(datum):
     return datum
 
 
+def ave_pred(datum):
+    print("Averaging predictions across tokens")
+
+    datum["true_pred_prob"] = datum.groupby(["adjusted_onset", "word"], sort=False)[
+        "true_pred_prob"
+    ].transform(np.mean)
+    datum["true_pred_rank"] = datum.groupby(["adjusted_onset", "word"], sort=False)[
+        "true_pred_rank"
+    ].transform(np.mean)
+
+    # taking only first instance
+    idx = (
+        datum.groupby(["adjusted_onset", "word"], sort=False)["token_idx"].transform(
+            min
+        )
+        == datum["token_idx"]
+    )
+    datum = datum[idx]
+
+    return datum
+
+
 def trim_datum(args, datum):
     """Trim the datum based on the largest lag size
 
@@ -304,6 +356,61 @@ def load_glove_embeddings(args):
     return glove_df
 
 
+def load_glove_embeddings(args):
+    glove_base_df_path = os.path.join(
+        args.PICKLE_DIR, "embeddings", "glove50", "full", "base_df.pkl"
+    )
+    glove_emb_df_path = os.path.join(
+        args.PICKLE_DIR,
+        "embeddings",
+        "glove50",
+        "full",
+        "cnxt_0001",
+        "layer_01.pkl",
+    )
+
+    glove_base_df = load_datum(glove_base_df_path)
+    glove_emb_df = load_datum(glove_emb_df_path)
+    if len(glove_base_df) != len(glove_emb_df):  # HACK
+        glove_df = pd.merge(
+            glove_base_df, glove_emb_df, left_index=True, right_index=True
+        )
+    else:
+        glove_base_df.reset_index(drop=False, inplace=True)
+        glove_df = pd.concat([glove_base_df, glove_emb_df], axis=1)
+    glove_df = glove_df[glove_df[f"in_{args.emb_type}"]]
+    glove_df = glove_df.loc[:, ["adjusted_onset", "word", "embeddings"]]
+
+    return glove_df
+
+
+def load_glove_embeddings2(args):
+    glove_base_df_path = os.path.join(
+        args.PICKLE_DIR, "embeddings", "glove50", "full", "base_df.pkl"
+    )
+    glove_emb_df_path = os.path.join(
+        args.PICKLE_DIR,
+        "embeddings",
+        "glove50",
+        "full",
+        "cnxt_0001",
+        "layer_01.pkl",
+    )
+
+    glove_base_df = load_datum(glove_base_df_path)
+    glove_emb_df = load_datum(glove_emb_df_path)
+    if len(glove_base_df) != len(glove_emb_df):  # HACK
+        glove_df = pd.merge(
+            glove_base_df, glove_emb_df, left_index=True, right_index=True
+        )
+    else:
+        glove_base_df.reset_index(drop=False, inplace=True)
+        glove_df = pd.concat([glove_base_df, glove_emb_df], axis=1)
+    glove_df = glove_df.loc[:, ["adjusted_onset", "word", "embeddings"]]
+
+    return glove_df
+
+
 def process_embeddings(args, df):
     """Process the datum embeddings based on input arguments
 
@@ -315,6 +422,22 @@ def process_embeddings(args, df):
         DataFrame: processed datum with correct embeddings
     """
 
+    if "glove50-predict" in args.emb_mod:  # predictions
+        print("Glove embeddings with gpt2 predictions")
+        args.emb_type = "glove50"
+        glove = api.load("glove-wiki-gigaword-50")
+        df = df.dropna(subset=["top1_pred"])
+        emb_concat_len = 1
+        if "glove50-predict5" in args.emb_mod:
+            emb_concat_len = 5
+        df.loc[:, "embeddings"] = df.top1_pred.apply(
+            lambda x: get_vectors(x, glove, emb_concat_len)
+        )
+        df = df[df.embeddings.notna()]
+        args.emb_mod = ""
+        df.loc[:, "true_pred_prob"] = df.true_pred_prob.apply(lambda x: (x[0]))
+        df.drop_duplicates(subset=["adjusted_onset", "word"], inplace=True)
+
     # drop NaN / None embeddings
     if "glove50" in args.emb_type:
         df = df.dropna(subset=["embeddings"])
@@ -322,14 +445,20 @@ def process_embeddings(args, df):
         df = drop_nan_embeddings(df)
         df = remove_punctuation(df)
     # add prediction embeddings (force to glove)
-    if "glove" in args.emb_mod:
+    if "glove50-concat-emb" in args.emb_mod:  # glove concat
+        df.drop(
+            ["embeddings"], axis=1, errors="ignore", inplace=True
+        )  # delete current embeddings
+        df = ave_pred(df)
+        glove_df = load_glove_embeddings2(args)
+        df = df[df.adjusted_onset.notna()]
+        glove_df = glove_df[glove_df.adjusted_onset.notna()]
+        df = df.merge(glove_df, how="inner", on=["adjusted_onset", "word"])
+    elif "glove50" in args.emb_mod:
         mask = df[f"in_glove50"] & df[f"{args.emb_type}_token_is_root"]
         df = df[mask]
         df.drop(
-            ["embeddings"],
-            axis=1,
-            errors="ignore",
-            inplace=True,
+            ["embeddings"], axis=1, errors="ignore", inplace=True
         )  # delete current embeddings
         glove_df = load_glove_embeddings(args)
         df = df[df.adjusted_onset.notna()]
@@ -462,11 +591,10 @@ def mod_datum_by_preds(args, datum):
         datum_top = datum[datum.true_pred_prob >= top].copy()
         datum_bot = datum[datum.true_pred_prob <= bot].copy()
         if percentile == 30:  # mid
-            mid_low = datum.true_pred_prob.quantile(35 / 100)
-            mid_high = datum.true_pred_prob.quantile(65 / 100)
-            datum_mid = datum[
-                (datum.true_pred_prob >= mid_low) & (datum.true_pred_prob <= mid_high)
-            ].copy()
+            prob_mid = datum.true_pred_prob.quantile(85 / 100)
+            improb_mid = datum.true_pred_prob.quantile(15 / 100)
+            datum_prob_mid = datum_top[datum_top.true_pred_prob <= prob_mid]
+            datum_improb_mid = datum_bot[datum_bot.true_pred_prob >= improb_mid]
         # datum_top["word_num"] = datum_top.groupby(datum_top.word).cumcount() + 1
         # datum_bot["word_num"] = datum_bot.groupby(datum_bot.word).cumcount() + 1
         datum_top["word_num"] = (
@@ -481,18 +609,6 @@ def mod_datum_by_preds(args, datum):
             .cumcount()
             + 1
         )
-        saving_datum = False
-        if saving_datum:
-            save_pickle(
-                datum_top,
-                f"../247-plotting/data/plotting/paper-prob-improb/datums/{args.sid}-glove50-top30.pkl",
-            )
-            save_pickle(
-                datum_bot,
-                f"../247-plotting/data/plotting/paper-prob-improb/datums/{args.sid}-glove50-bot30.pkl",
-            )
-            breakpoint()
-
         if "alignednum-improb" in args.datum_mod:  # improb num aligned with prob
             datum = datum_bot.merge(
                 datum_top.loc[:, ("word", "word_num")],
@@ -513,8 +629,11 @@ def mod_datum_by_preds(args, datum):
         elif "aligned-prob" in args.datum_mod:  # prob aligned with improb
             datum = datum_top[datum_top.word.isin(datum_bot.word.unique())]
             print(f"Selected {len(datum.index)} top pred prob words")
-        elif "middle" in args.datum_mod:
-            datum = datum_mid
+        elif "improb-mid" in args.datum_mod:
+            datum = datum_improb_mid
+            print(f"Selected {len(datum.index)} mid pred prob words")
+        elif "prob-mid" in args.datum_mod:
+            datum = datum_prob_mid
             print(f"Selected {len(datum.index)} mid pred prob words")
         elif "improb" in args.datum_mod:  # improb
             datum = datum_bot
