@@ -36,7 +36,6 @@ def skip_elecs_done(args, electrode_info):
     elecs_num = len(electrode_info)
 
     while len(elecs_done) > 0:
-
         elec_done = elecs_done[0]
         skip = False
 
@@ -44,9 +43,7 @@ def skip_elecs_done(args, electrode_info):
         if "comp" in elec_done:  # has comp
             if args.project_id == "podcast":  # podcast
                 skip = True
-            elif (
-                elecs_done[1].replace("prod", "comp") == elec_done
-            ):  # tfs, has prod
+            elif elecs_done[1].replace("prod", "comp") == elec_done:  # tfs, has prod
                 skip = True
                 elecs_done.pop(1)
         elecs_done.pop(0)
@@ -239,7 +236,7 @@ def parallel_encoding(args, electrode_info, datum, stitch_index, parallel=True):
         print("Running all electrodes in parallel")
         summary_file = os.path.join(args.full_output_dir, "summary.csv")  # summary file
         p = Pool(4)  # multiprocessing
-        
+
         # Skipping elecs already done
         if os.path.exists(summary_file):  # previous job
             print("Previously ran the same job, checking for elecs done")
@@ -268,7 +265,6 @@ def parallel_encoding(args, electrode_info, datum, stitch_index, parallel=True):
 
 @main_timer
 def main():
-
     # Read command line arguments
     args = parse_arguments()
 

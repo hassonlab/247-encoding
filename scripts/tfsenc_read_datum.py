@@ -154,7 +154,9 @@ def filter_datum(args, df):
 
     # filter based on align with arguments
     for model in args.align_with:
-        if model == "glove50" and args.emb_type != "glove50":  # when aligning with glove
+        if (
+            model == "glove50" and args.emb_type != "glove50"
+        ):  # when aligning with glove
             common = (
                 common & df[f"{args.emb_type}_token_is_root"]
             )  # also ensure word=token
@@ -431,7 +433,6 @@ def trim_datum(args, datum):
 
 
 def rand_emb(df):
-
     emb_max = df.embeddings.apply(max).max()
     emb_min = df.embeddings.apply(min).min()
 
@@ -460,7 +461,6 @@ def zeroshot_datum(df):
 
 
 def arb_emb(df):
-
     df2 = zeroshot_datum(df)
     df2 = df2.loc[:, ("word", "embeddings")]
     df2.reset_index(drop=True, inplace=True)
@@ -535,6 +535,47 @@ def mod_datum(args, datum):
     return datum
 
 
+def select_windows(args, df):
+    EMB_DIMS = {"whisper-tiny.en": 348, "whisper-medium.en": 1024}
+    EMB_WINS = {"podcast": 12, "tfs": 10}  # TODO move to config
+
+    df_emb = df["embeddings"]
+    embs = np.vstack(df_emb.values)
+
+    for emb_type in EMB_DIMS:
+        if emb_type in args.emb_type:
+            emb_dim = EMB_DIMS[emb_type]
+    emb_win_num = EMB_WINS[args.project_id]
+
+    assert embs.shape[1] == emb_dim * emb_win_num, "Something wrong with emb shape"
+
+    if "-" in args.window_num:  # range
+        start_win = args.window_num[: args.window_num.find("-")]
+        end_win = args.window_num[args.window_num.find("-") + 1 :]
+    else:  # onewindow
+        start_win = end_win = args.window_num
+    assert start_win.isdigit()
+    assert end_win.isdigit()
+
+    if "full-en-offset" in args.base_df_path:
+        print(f"Taking win {start_win} to {end_win} from the back")
+        start_idx = int(end_win) * emb_dim * -1
+        end_idx = (int(start_win) - 1) * emb_dim * -1
+        if start_win == "1":
+            embs = embs[:, start_idx:]
+        else:
+            embs = embs[:, start_idx:end_idx]
+    else:
+        print(f"Taking win {start_win} to {end_win}")
+        start_idx = (int(start_win) - 1) * emb_dim
+        end_idx = int(end_win) * emb_dim
+        embs = embs[:, start_idx:end_idx]
+
+    df["embeddings"] = embs.tolist()
+
+    return df
+
+
 def run_pca(args, df):
     pca_to = args.pca_to
     pca = PCA(n_components=pca_to, svd_solver="auto", whiten=True)
@@ -542,30 +583,6 @@ def run_pca(args, df):
     df_emb = df["embeddings"]
     embs = np.vstack(df_emb.values)
 
-    # assert embs.shape[1] % 12 == 0, "Something wrong with emb shape"
-
-    # if "-" in args.window_num:  # range
-    #     start_win = args.window_num[: args.window_num.find("-")]
-    #     end_win = args.window_num[args.window_num.find("-") + 1 :]
-    # else:  # onewindow
-    #     start_win = end_win = args.window_num
-    # assert start_win.isdigit()
-    # assert end_win.isdigit()
-    # emb_dim = 384  ## HACK whisper-tiny.en
-
-    # if "full-en-offset" in args.base_df_path:
-    #     print(f"Taking win {start_win} to {end_win} from the back")
-    #     start_idx = int(end_win) * emb_dim * -1
-    #     end_idx = (int(start_win) - 1) * emb_dim * -1
-    #     if start_win == "1":
-    #         embs = embs[:, start_idx:]
-    #     else:
-    #         embs = embs[:, start_idx:end_idx]
-    # else:
-    #     print(f"Taking win {start_win} to {end_win}")
-    #     start_idx = (int(start_win) - 1) * emb_dim
-    #     end_idx = int(end_win) * emb_dim
-    #     embs = embs[:, start_idx:end_idx]
     print(f"PCA from {embs.shape[1]} to {pca_to}")
     pca_output = pca.fit_transform(embs)
     print(f"PCA explained variance: {sum(pca.explained_variance_)}")
@@ -590,15 +607,13 @@ def read_datum(args, stitch):
     if "whisper" in args.emb_type:  ## HACK
         base_df = base_df.dropna(subset=["onset", "offset"])
         assert len(base_df) == len(emb_df)
-    
+
     if len(emb_df) != len(base_df):
         df = pd.merge(
             base_df, emb_df, left_index=True, right_index=True
         )  # TODO Needs testing (either bert_utterance or whisper)
-    else: # HACK until pickling is fixed
-        base_df.reset_index(
-            drop=False, inplace=True
-        )
+    else:  # HACK until pickling is fixed
+        base_df.reset_index(drop=False, inplace=True)
         df = pd.concat([base_df, emb_df], axis=1)
 
     print(f"After loading: Datum loads with {len(df)} words")
@@ -612,9 +627,15 @@ def read_datum(args, stitch):
     df = mod_datum(args, df)  # further filter datum based on datum_mod argument
     print(f"Datum final length: {len(df)}")
 
-    if args.project_id == "tfs" and len(df.embeddings.iloc[0]) >= 2000 and args.pca_to > 0:  # emb dim too big
+    if (
+        args.project_id == "tfs"
+        and len(df.embeddings.iloc[0]) >= 2000
+        and args.pca_to > 0
+    ):  # emb dim too big
         # HACK
         print(f"Running early pca due to big embedding dimension")
         df = run_pca(args, df)
+
+    df = select_windows(args, df)
 
     return df
