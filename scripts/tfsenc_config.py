@@ -1,5 +1,8 @@
 import os
 
+EMB_DIMS = {"whisper-tiny.en": 384, "whisper-medium.en": 1024}
+EMB_WINS = {"podcast": 12, "tfs": 10}  # TODO move to config
+
 
 def create_output_directory(args):
     # output_prefix_add = '-'.join(args.emb_file.split('_')[:-1])
@@ -49,7 +52,9 @@ def setup_environ(args):
     args.emb_type = clean_lm_model_name(args.emb_type)
     args.align_with = clean_lm_model_name(args.align_with)
 
-    INPUT_DIR = os.path.join(os.getcwd(), "data", args.project_id, str(args.sid))
+    INPUT_DIR = os.path.join(
+        os.getcwd(), "data", args.project_id, str(args.sid)
+    )
 
     args.PICKLE_DIR = os.path.join(INPUT_DIR, "pickles")
     EMB_DIR = os.path.join(args.PICKLE_DIR, "embeddings")
@@ -67,7 +72,9 @@ def setup_environ(args):
         f"layer_{args.layer_idx:02d}.pkl",
     )
 
-    args.signal_file = "_".join([str(args.sid), args.pkl_identifier, "signal.pkl"])
+    args.signal_file = "_".join(
+        [str(args.sid), args.pkl_identifier, "signal.pkl"]
+    )
     args.electrode_file = "_".join([str(args.sid), "electrode_names.pkl"])
     args.stitch_file = "_".join(
         [str(args.sid), args.pkl_identifier, "stitch_index.pkl"]
