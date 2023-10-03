@@ -8,7 +8,7 @@ DT := ${USR}
 #  Configurable options
 # -----------------------------------------------------------------------------
 
-PRJCT_ID := podcast
+PRJCT_ID := tfs
 # {podcast | tfs}
 
 ############## tfs electrode ids ##############
@@ -45,7 +45,7 @@ SIG_FN :=
 # SIG_FN := --sig-elec-file tfs-sig-file-7170-region-ifg.csv tfs-sig-file-7170-region-ifg.csv
 
 # podcast electrode IDs
-SID := 777
+# SID := 777
 # SID := 661
 # E_LIST :=  $(shell seq 1 115)
 # SID := 662
@@ -67,8 +67,8 @@ SID := 777
 #
 
 ### podcast significant electrode list (if provided, override electrode IDs)
-SIG_FN := --sig-elec-file podcast_160.csv
-SIG_FN := --sig-elec-file ccn-sig-file-whisper-en-max.csv
+# SIG_FN := --sig-elec-file podcast_160.csv
+# SIG_FN := --sig-elec-file ccn-sig-file-whisper-en-max.csv
 
 PKL_IDENTIFIER := full
 # {full | trimmed}
@@ -83,8 +83,9 @@ LAGS := {-500..500..5} # lag500-5
 LAGS := -300000 -250000 -200000 200000 250000 300000 # lag300k-50k
 LAGS := -150000 -120000 -90000 90000 120000 150000 # lag150k-30k
 LAGS := -60000 -50000 -40000 -30000 -20000 20000 30000 40000 50000 60000 # lag60k-10k
+LAGS := {-2000..2000..25} # lag2k-25
+LAGS := {-5000..5000..25} # lag5k-25
 LAGS := {-10000..10000..25} # lag10k-25
-LAGS := {-5000..5000..25} # lag2k-25
 
 # Conversation ID (Choose 0 to run for all conversations)
 CONVERSATION_IDX := 0
@@ -94,8 +95,7 @@ CONVERSATION_IDX := 0
 EMB := blenderbot
 EMB := gpt2-xl
 EMB := blenderbot-small
-EMB := gpt2-xl
-EMB := whisper-medium.en-encoder-concat
+EMB := whisper-tiny.en-encoder-var-win
 CNXT_LEN := 1
 
 # Choose the window size to average for each point
@@ -132,8 +132,16 @@ WV := all
 NM := l2
 # {l1 | l2 | max}
 
-# Choose windows for whisper-encoder (x: x-th window or x-y: x-th to y-th window)
-WN := 1-12
+# Choose windows for whisper-encoder
+# (x: x-th window or x-y: x-th to y-th window)
+# (pca: pca windows to 1 window per word) (different len)
+WN := all
+WN := $(shell seq 1 10)
+WN := $(shell seq 10 20)
+WN := 1-2 1-3 1-4 1-5 1-6 1-7 1-8 1-9 1-10
+WN := 1-11 1-12 1-13 1-14 1-15 1-16 1-17 1-18 1-19 1-20
+WN := pca
+
 
 # Choose the command to run: python runs locally, echo is for debugging, sbatch
 # is for running on SLURM all lags in parallel.
@@ -196,7 +204,7 @@ actually predicted by gpt2} (only used for glove embeddings)
 
 DM := lag2k-25-incorrect
 DM := lag2k-25-improb
-DM := lag5k-25-all
+DM := lag10k-25-all
 
 ############## Model Modification ##############
 # {best-lag: run encoding using the best lag (lag model with highest correlation)}
@@ -251,7 +259,7 @@ run-encoding:
 		$(SH) \
 		$(PSH) \
 		--normalize $(NM)\
-		--output-parent-dir $(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-$(DM) \
+		--output-parent-dir $(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-$(DM)-$(WN)-$(LAYER_IDX) \
 		--output-prefix $(USR)-$(WS)ms-$(WV);\
 
 
@@ -267,7 +275,7 @@ run-encoding-layers:
 				--conversation-id $(CONVERSATION_IDX) \
 				--electrodes $(E_LIST) \
 				--emb-type $(EMB) \
-				--context-length $$context \
+				--context-length $(CNXT_LEN) \
 				--align-with $(ALIGN_WITH) \
 				--window-size $(WS) \
 				--window-num $$windows \
@@ -284,7 +292,7 @@ run-encoding-layers:
 				$(SH) \
 				$(PSH) \
 				--normalize $(NM)\
-				--output-parent-dir $(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-$(DM)-$$windows-$$layer \
+				--output-parent-dir $(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-$(DM)-$$windows \
 				--output-prefix $(USR)-$(WS)ms-$(WV);\
 		done; \
 	done;
