@@ -86,9 +86,7 @@ def cv_lm_003_prod_comp(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag):
         if lag != -1:
             B = model.named_steps["linearregression"].coef_
             assert lag < B.shape[0], f"Lag index out of range"
-            B = np.repeat(
-                B[lag, :][np.newaxis, :], B.shape[0], 0
-            )  # best-lag model
+            B = np.repeat(B[lag, :][np.newaxis, :], B.shape[0], 0)  # best-lag model
             model.named_steps["linearregression"].coef_ = B
 
         # Predict
@@ -101,9 +99,7 @@ def cv_lm_003_prod_comp(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag):
 
 
 @jit(nopython=True)
-def build_Y(
-    onsets, convo_onsets, convo_offsets, brain_signal, lags, window_size
-):
+def build_Y(onsets, convo_onsets, convo_offsets, brain_signal, lags, window_size):
     """[summary]
 
     Args:
@@ -165,7 +161,6 @@ def build_XY(args, datum, brain_signal):
 
     lags = np.array(args.lags)
     brain_signal = brain_signal.reshape(-1, 1)
-
     Y = build_Y(
         word_onsets,
         convo_onsets,
@@ -179,7 +174,7 @@ def build_XY(args, datum, brain_signal):
 
 
 def encoding_mp_prod_comp(
-    args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag
+    args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag, fold_cor=True
 ):
     if args.shuffle:
         np.random.shuffle(Ytra)
@@ -199,16 +194,19 @@ def encoding_mp_prod_comp(
         rp_fold, _, _ = encColCorr(Y_new[fold_tes == i], PY_hat[fold_tes == i])
         rps.append(rp_fold)
 
-    return rps
+    if fold_cor:  # correlation per fold
+        return rps
+    else:
+        return rp
 
 
 def run_regression(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes):
     perm_prod = []
     for i in range(args.npermutations):
-        result = encoding_mp_prod_comp(
-            args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, -1
-        )
         if args.model_mod and "best-lag" in args.model_mod:
+            result = encoding_mp_prod_comp(
+                args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, -1, False
+            )
             best_lag = np.argmax(np.array(result))
             print("switch to best-lag: " + str(best_lag))
             perm_prod.append(
@@ -217,6 +215,9 @@ def run_regression(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes):
                 )
             )
         else:
+            result = encoding_mp_prod_comp(
+                args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, -1
+            )
             perm_prod.append(result)
 
     return perm_prod
@@ -225,9 +226,7 @@ def run_regression(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes):
 def get_groupkfolds(datum, X, Y, fold_num=10):
     fold_cat = np.zeros(datum.shape[0])
     grpkfold = GroupKFold(n_splits=fold_num)
-    folds = [
-        t[1] for t in grpkfold.split(X, Y, groups=datum["conversation_id"])
-    ]
+    folds = [t[1] for t in grpkfold.split(X, Y, groups=datum["conversation_id"])]
 
     for i in range(0, len(folds)):
         for row in folds[i]:
@@ -263,9 +262,7 @@ def write_encoding_results(args, cor_results, elec_name, mode):
         None
     """
     trial_str = append_jobid_to_string(args, mode)
-    filename = os.path.join(
-        args.full_output_dir, elec_name + trial_str + ".csv"
-    )
+    filename = os.path.join(args.full_output_dir, elec_name + trial_str + ".csv")
     fold_filename = os.path.join(
         args.full_output_dir, elec_name + trial_str + "_fold.csv"
     )

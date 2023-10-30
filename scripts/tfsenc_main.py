@@ -9,7 +9,7 @@ import pandas as pd
 from tfsenc_config import setup_environ
 from tfsenc_load_signal import load_electrode_data
 from tfsenc_parser import parse_arguments
-from tfsenc_read_datum import read_datum
+from tfsenc_read_datum import read_datum, read_datum2
 from tfsenc_utils import (
     build_XY,
     get_groupkfolds,
@@ -35,9 +35,7 @@ def skip_elecs_done(args, electrode_info):
         for file in glob.glob(os.path.join(args.full_output_dir, "*_*.csv"))
     ]
     elecs_done = [
-        elec.replace("_fold", "")
-        .replace("prod", "comp")
-        .replace("_comp.csv", "")
+        elec.replace("_fold", "").replace("prod", "comp").replace("_comp.csv", "")
         for elec in elecs_done
     ]
     elecs_counts = Counter(elecs_done)
@@ -98,9 +96,7 @@ def process_subjects(args):
         )
         assert len(sig_elec_list) == len(sid_sig_elec_list), "Sig Elecs Missing"
         electrode_info = {
-            (values["subject"], values["electrode_id"]): values[
-                "electrode_name"
-            ]
+            (values["subject"], values["electrode_id"]): values["electrode_name"]
             for _, values in sid_sig_elec_list.iterrows()
         }
 
@@ -110,8 +106,7 @@ def process_subjects(args):
             (args.sid, key): next(
                 iter(
                     df.loc[
-                        (df.subject == str(args.sid))
-                        & (df.electrode_id == key),
+                        (df.subject == str(args.sid)) & (df.electrode_id == key),
                         "electrode_name",
                     ]
                 ),
@@ -177,6 +172,12 @@ def single_electrode_encoding(electrode, args, datum, stitch_index):
         or args.conversation_id
         or args.sid == 798
         or (("pca" not in args.window_num) and ("var-win" in args.emb_type))
+        or "-windows" in args.emb_type
+        or (
+            ("half" in args.datum_mod)
+            or ("quarter" in args.datum_mod)
+            or ("5000" in args.datum_mod)
+        )
     ):  # 1 conv
         print("kfold instead of groupkfold")
         fold_cat_prod = get_kfolds(prod_X, args.fold_num)
@@ -185,15 +186,11 @@ def single_electrode_encoding(electrode, args, datum, stitch_index):
         args.project_id == "tfs"
         and elec_datum.conversation_id.nunique() < args.fold_num
     ):  # num of convos less than num of folds (special case for 7170)
-        print(
-            f"{args.sid} {elec_name} has less conversations than the number of folds"
-        )
+        print(f"{args.sid} {elec_name} has less conversations than the number of folds")
         return (args.sid, elec_name, 1, 1)
     else:
         # Get groupkfolds
-        fold_cat_prod, fold_cat_comp = get_groupkfolds(
-            elec_datum, X, Y, args.fold_num
-        )
+        fold_cat_prod, fold_cat_comp = get_groupkfolds(elec_datum, X, Y, args.fold_num)
         if (
             len(np.unique(fold_cat_prod)) < args.fold_num
             or len(np.unique(fold_cat_comp)) < args.fold_num
@@ -238,17 +235,18 @@ def parallel_encoding(args, electrode_info, datum, stitch_index, parallel=True):
 
     # if args.emb_type == "gpt2-xl" and args.sid == 676:
     #     parallel = False
+    summary_file = os.path.join(args.full_output_dir, "summary.csv")  # summary file
+    # Skipping elecs already done
+    if os.path.exists(summary_file):  # previous job
+        print("Previously ran the same job, checking for elecs done")
+        electrode_info = skip_elecs_done(args, electrode_info)
+
     if parallel:
         print("Running all electrodes in parallel")
-        summary_file = os.path.join(
-            args.full_output_dir, "summary.csv"
-        )  # summary file
         p = Pool(4)  # multiprocessing
-
-        # Skipping elecs already done
-        if os.path.exists(summary_file):  # previous job
-            print("Previously ran the same job, checking for elecs done")
-            electrode_info = skip_elecs_done(args, electrode_info)
+        if "acoustic" in args.emb_type:  # HACK
+            print("Parallel decreased to 2")
+            p = Pool(2)
 
         with open(summary_file, "w") as f:
             writer = csv.writer(f, delimiter=",", lineterminator="\r\n")
@@ -265,8 +263,12 @@ def parallel_encoding(args, electrode_info, datum, stitch_index, parallel=True):
                 writer.writerow(result)
     else:
         print("Running all electrodes")
-        for electrode in electrode_info.items():
-            single_electrode_encoding(electrode, args, datum, stitch_index)
+        with open(summary_file, "w") as f:
+            writer = csv.writer(f, delimiter=",", lineterminator="\r\n")
+            writer.writerow(("sid", "electrode", "prod", "comp"))
+            for electrode in electrode_info.items():
+                result = single_electrode_encoding(electrode, args, datum, stitch_index)
+                writer.writerow(result)
 
     return None
 
@@ -284,7 +286,10 @@ def main():
 
     # Locate and read datum
     stitch_index = return_stitch_index(args)
-    datum = read_datum(args, stitch_index)
+    if "acoustic" in args.emb_type:  # HACK
+        datum = read_datum2(args, stitch_index)
+    else:
+        datum = read_datum(args, stitch_index)
 
     # Processing significant electrodes or individual subjects
     electrode_info = process_subjects(args)
