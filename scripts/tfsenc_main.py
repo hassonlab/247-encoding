@@ -167,21 +167,24 @@ def single_electrode_encoding(electrode, args, datum, stitch_index):
     if args.project_id == "podcast":  # podcast
         fold_cat_prod = []
         fold_cat_comp = get_kfolds(comp_X, args.fold_num)
+    # elif "-acoustic" in args.emb_type and args.sid == 676:
+    #     fold_cat_prod = get_kfolds(prod_X, args.fold_num)
+    #     fold_cat_comp = []
     elif (
         "single-conv" in args.datum_mod
         or args.conversation_id
         or args.sid == 798
+        or ("-kfold") in args.datum_mod
         or (("pca" not in args.window_num) and ("var-win" in args.emb_type))
-        or "-windows" in args.emb_type
-        or (
-            ("half" in args.datum_mod)
-            or ("quarter" in args.datum_mod)
-            or ("5000" in args.datum_mod)
-        )
+        or "-acoustic" in args.emb_type
+        or "half" in args.datum_mod
+        or "quarter" in args.datum_mod
+        or "tenth" in args.datum_mod
+        or "5000" in args.datum_mod
     ):  # 1 conv
-        print("kfold instead of groupkfold")
         fold_cat_prod = get_kfolds(prod_X, args.fold_num)
         fold_cat_comp = get_kfolds(comp_X, args.fold_num)
+        # fold_cat_comp = []
     elif (
         args.project_id == "tfs"
         and elec_datum.conversation_id.nunique() < args.fold_num
@@ -245,8 +248,8 @@ def parallel_encoding(args, electrode_info, datum, stitch_index, parallel=True):
         print("Running all electrodes in parallel")
         p = Pool(4)  # multiprocessing
         if "acoustic" in args.emb_type:  # HACK
-            print("Parallel decreased to 2")
-            p = Pool(2)
+            # print("Parallel decreased to 2")
+            p = Pool(4)
 
         with open(summary_file, "w") as f:
             writer = csv.writer(f, delimiter=",", lineterminator="\r\n")
@@ -290,6 +293,38 @@ def main():
         datum = read_datum2(args, stitch_index)
     else:
         datum = read_datum(args, stitch_index)
+        if "concat" in args.datum_mod:
+            if "de-concat" in args.datum_mod:
+                args.emb_df_path = (
+                    args.emb_df_path.replace("encoder", "decoder-nots")
+                    .replace("layer_04", "layer_03")
+                    .replace("layer_00", "layer_03")
+                )
+                args.base_df_path = args.base_df_path.replace("encoder", "decoder-nots")
+            if "ac-concat" in args.datum_mod:
+                args.emb_df_path = args.emb_df_path.replace("layer_04", "layer_00")
+            if "symspeech-concat" in args.datum_mod:
+                args.emb_df_path = f"/scratch/gpfs/kw1166/247-encoding/data/tfs/{args.sid}/pickles/embeddings/symbolic-speech/full/cnxt_0001/layer_00.pkl"
+                args.emb_type = "symbolic-speech"
+            if "symlang-concat" in args.datum_mod:
+                args.emb_df_path = f"/scratch/gpfs/kw1166/247-encoding/data/tfs/{args.sid}/pickles/embeddings/symbolic-lang/full/cnxt_0001/layer_00.pkl"
+                args.emb_type = "symbolic-lang"
+            datum2 = read_datum(args, stitch_index)
+
+            def concat(x):
+                return np.concatenate((x["embeddings2"], x["embeddings"]))
+
+            # if len(datum) == len(datum2):
+            #     datum2["embeddings2"] = datum.embeddings
+            #     datum["embeddings"] = datum2.apply(concat, axis=1)
+            # else:
+            if True:  # turn this on for symbolic embs
+                datum.rename(columns={"embeddings": "embeddings2"}, inplace=True)
+                datum = datum.merge(
+                    datum2[["word", "adjusted_onset", "embeddings"]],
+                    on=["word", "adjusted_onset"],
+                )
+                datum["embeddings"] = datum.apply(concat, axis=1)
 
     # Processing significant electrodes or individual subjects
     electrode_info = process_subjects(args)

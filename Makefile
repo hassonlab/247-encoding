@@ -18,9 +18,11 @@ E_LIST := $(shell seq 1 105)
 BC := 
 
 # 676 Electrode IDs
-# SID := 676
-# E_LIST := $(shell seq 1 125)
-# BC := --bad-convos 38 39
+SID := 676
+E_LIST := $(shell seq 1 125)
+# BC := --bad-convos $(shell seq 1 37) $(shell seq 40 78)
+# BC := 
+BC := --bad-convos 38 39
 
 # 717 Electrode IDs
 # SID := 7170
@@ -28,9 +30,9 @@ BC :=
 # BC :=
 
 # 798 Electrode IDs
-# SID := 798
-# E_LIST := $(shell seq 1 198)
-# BC :=
+SID := 798
+E_LIST := $(shell seq 1 198)
+BC :=
 
 # Sig file will override whatever electrodes you choose
 SIG_FN := 
@@ -41,8 +43,8 @@ SIG_FN :=
 # SIG_FN := --sig-elec-file 625-mariano-prod-new-53.csv 625-mariano-comp-new-30.csv # for sig-test
 # SIG_FN := --sig-elec-file 676-mariano-prod-new-109.csv 676-mariano-comp-new-104.csv # for sig-test
 # SIG_FN := --sig-elec-file 7170-comp-sig.csv 7170-prod-sig.csv
-# SIG_FN := --sig-elec-file tfs-sig-file-625-sig-1.0-comp.csv tfs-sig-file-625-sig-1.0-prod.csv
 # SIG_FN := --sig-elec-file tfs-sig-file-7170-region-ifg.csv tfs-sig-file-7170-region-ifg.csv
+# SIG_FN := --sig-elec-file tfs-sig-file-676-whisper-en-last-0.01-prod.csv
 
 # podcast electrode IDs
 # SID := 777
@@ -83,8 +85,10 @@ LAGS := {-500..500..5} # lag500-5
 LAGS := -300000 -250000 -200000 200000 250000 300000 # lag300k-50k
 LAGS := -150000 -120000 -90000 90000 120000 150000 # lag150k-30k
 LAGS := -60000 -50000 -40000 -30000 -20000 20000 30000 40000 50000 60000 # lag60k-10k
-LAGS := {-2000..2000..25} # lag2k-25
+LAGS := {-1000..1000..25} # lag1k-25
 LAGS := {-5000..5000..25} # lag5k-25
+LAGS := {-2000..2000..25} # lag2k-25
+LAGS := {-5000..5000..20} # lag5k-20
 LAGS := {-10000..10000..25} # lag10k-25
 
 # Conversation ID (Choose 0 to run for all conversations)
@@ -93,12 +97,19 @@ CONVERSATION_IDX := 0
 # Choose which set of embeddings to use
 # {glove50 | gpt2-xl | blenderbot-small}
 EMB := blenderbot
-EMB := gpt2-xl
 EMB := blenderbot-small
+EMB := whisper-tiny.en-acoustic
+EMB := symbolic-lang
+EMB := whisper-tiny.en-encoder
 EMB := whisper-tiny.en-encoder-var-win
-CNXT_LEN := 1
+EMB := whisper-tiny.en-decoder-nots
+EMB := gpt2-xl
+CNXT_LEN := 1024
 
 # Choose the window size to average for each point
+WS := 100
+WS := 50
+WS := 20
 WS := 200
 
 # Choose which set of embeddings to align with (intersection of embeddings)
@@ -110,7 +121,10 @@ ALIGN_WITH :=
 
 # Choose layer of embeddings to use
 # {1 for glove, 48 for gpt2, 8 for blenderbot encoder, 16 for blenderbot decoder}
-LAYER_IDX := 0
+LAYER_IDX := 4
+LAYER_IDX := 3
+LAYER_IDX := $(shell seq 0 48)
+LAYER_IDX := 36
 
 # Choose whether to PCA (0 or for no pca)
 PCA_TO := 50
@@ -135,12 +149,15 @@ NM := l2
 # Choose windows for whisper-encoder
 # (x: x-th window or x-y: x-th to y-th window)
 # (pca: pca windows to 1 window per word) (different len)
-WN := all
+WN := 0-24 25-49 50-74 75-99 100-149 150-199 200-249 250-299 300-399 400-499 500-599 600-799 800-999
+WN := 1-10-pca 11-20-pca 11-20-pca-1-10 11-20-pca-11-20 
+WN := 1-10-pca
+WN := nooverlap
+WN := 0-1499
 WN := $(shell seq 1 10)
 WN := $(shell seq 10 20)
-WN := 1-2 1-3 1-4 1-5 1-6 1-7 1-8 1-9 1-10
-WN := 1-11 1-12 1-13 1-14 1-15 1-16 1-17 1-18 1-19 1-20
-WN := pca
+WN := pcapca
+WN := all
 
 
 # Choose the command to run: python runs locally, echo is for debugging, sbatch
@@ -200,11 +217,15 @@ actually predicted by gpt2} (only used for glove embeddings)
 # {concat-emb2: concat embeddings (eg, n-1 + n + n+1)}
 # ... etc
 
-# 3. {everything else is purely for the result folder name}
+# 4. {everything else is purely for the result folder name}
 
-DM := lag2k-25-incorrect
-DM := lag2k-25-improb
-DM := lag10k-25-all
+DM := lag5k-25-all
+DM := lag10k-25-all-0-de-concat-nopca
+DM := lag2k-25-all-0
+DM := lag2k-25-all-noearlypca
+DM := lag5k-20-all-full-chunk-4
+DM := lag5k-20-all-win20
+DM := lag10k-25-quarter
 
 ############## Model Modification ##############
 # {best-lag: run encoding using the best lag (lag model with highest correlation)}
@@ -212,6 +233,8 @@ DM := lag10k-25-all
 # {leave empty for regular encoding}
 MM := best-lag
 MM := pc-flip-best-lag
+MM := pc-flip
+MM := pred-lag
 MM := 
 
 #TODO: move paths to makefile
@@ -224,9 +247,14 @@ link-data:
 	ln -s /projects/HASSON/247/data/podcast-data/*.csv data/
 	# ln -fs /scratch/gpfs/${USER}/247-pickling/results/* data/
 
+google-csv:
+	$(CMD) scripts/tfsmis_google_pkl-csv.py; \
+
+
 # -----------------------------------------------------------------------------
 # Encoding
 # -----------------------------------------------------------------------------
+
 
 # Run the encoding model for the given electrodes in one swoop
 # Note that the code will add the subject, embedding type, and PCA details to
@@ -259,7 +287,7 @@ run-encoding:
 		$(SH) \
 		$(PSH) \
 		--normalize $(NM)\
-		--output-parent-dir $(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-$(DM)-$(WN)-$(LAYER_IDX) \
+		--output-parent-dir $(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-$(DM) \
 		--output-prefix $(USR)-$(WS)ms-$(WV);\
 
 
@@ -292,7 +320,7 @@ run-encoding-layers:
 				$(SH) \
 				$(PSH) \
 				--normalize $(NM)\
-				--output-parent-dir $(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-$(DM)-$$windows \
+				--output-parent-dir $(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-$(DM)-$$layer \
 				--output-prefix $(USR)-$(WS)ms-$(WV);\
 		done; \
 	done;
@@ -409,8 +437,8 @@ run-erp:
 # LAT_TK_LABLS: lag tick labels (tick mark lables to show on the x-axis) (optional)
 
 # Plotting for vanilla encoding (no concatenated lags)
-LAGS_PLT := $(LAGS)
-LAGS_SHOW := $(LAGS)
+LAGS_PLT := {-2000..2000..25}
+LAGS_SHOW := {-2000..2000..25}
 X_VALS_SHOW := $(LAGS_SHOW)
 LAG_TKS := 
 LAG_TK_LABLS :=
@@ -430,10 +458,10 @@ LAG_TK_LABLS :=
 # LAG_TK_LABLS := --lag-tick-labels -300 -60 -30 {-10..10..2} 30 60 300
 
 # zoomed-in version (from -2s to 2s)
-# LAGS_SHOW := {-2000..2000..25}
-# X_VALS_SHOW := {-2000..2000..25}
-# LAG_TKS := 
-# LAG_TK_LABLS :=
+LAGS_SHOW := {-2000..2000..25}
+X_VALS_SHOW := {-2000..2000..25}
+LAG_TKS := 
+LAG_TK_LABLS :=
 
 ########################## Other Plotting Parameters ##########################
 # Line color by (Choose what lines colors are decided by) (required)
@@ -448,8 +476,8 @@ LAG_TK_LABLS :=
 # Split by, if any (Choose how lines are split into plots) (Only effective when Split is not empty) (optional)
 # {  | --split-by labels | --split-by keys }
 
-PLT_PARAMS := --lc-by labels --ls-by keys # plot for just one key (podcast plots)
 PLT_PARAMS := --lc-by labels --ls-by keys --split horizontal --split-by keys # plot for prod+comp (247 plots)
+PLT_PARAMS := --lc-by labels --ls-by keys # plot for just one key (podcast plots)
 
 # Figure Size (width height)
 FIG_SZ:= 15 6
@@ -466,15 +494,11 @@ The number of sig elec files should also equal # of sid * # of keys
 plot-new:
 	rm -f results/figures/*
 	python scripts/tfsplt_new.py \
-		--sid 625 \
+		--sid 777 \
 		--formats \
-			'results/tfs/20221012-glove-concat/kw-tfs-full-625-glove50-lag2k-25-all/*/*_%s.csv' \
-			'results/tfs/kw-tfs-full-625-glove50-lag2k-25-all-aligned/*/*_%s.csv' \
-			'results/tfs/kw-tfs-full-625-gpt2-xl-lag2k-25-all/*/*_%s.csv' \
-			'results/tfs/kw-tfs-full-625-gpt2-xl-lag2k-25-all-aligned/*/*_%s.csv' \
-			'results/tfs/kw-tfs-full-625-gpt2-xl-lag2k-25-all-shift-emb/*/*_%s.csv' \
-		--labels glove glove-aligned gpt2-n-1 gpt2-n-1-aligned gpt2-n \
-		--keys comp prod \
+			'results/podcast/kw-podcast-full-777-symbolic-lang-lag2k-25-all/*/*_%s.csv' \
+		--labels symbolic-lang \
+		--keys comp \
 		$(SIG_FN) \
 		--fig-size $(FIG_SZ) \
 		--lags-plot $(LAGS_PLT) \
@@ -483,7 +507,7 @@ plot-new:
 		$(LAG_TKS) \
 		$(LAG_TK_LABLS) \
 		$(PLT_PARAMS) \
-		--outfile results/figures/tfs-625-gpt2-sig.pdf
+		--outfile results/figures/podcast-symbolic-lang.pdf
 	rsync -av results/figures/ ~/tigress/247-encoding-results/
 
 

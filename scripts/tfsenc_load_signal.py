@@ -6,6 +6,7 @@ from scipy import stats
 from scipy.io import loadmat
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import PolynomialFeatures
+from statsmodels.tsa.ar_model import AutoReg
 
 # def trim_signal(signal):
 #     bin_size = 32  # 62.5 ms (62.5/1000 * 512)
@@ -41,6 +42,19 @@ def detrend_signal(mat_signal):  # Detrending
     model.fit(Xp, y)
     trend = model.predict(Xp)
     mat_signal = y - trend
+
+    return mat_signal
+
+
+def autoreg_signal(mat_signal):
+    """Build AR model to get rid of autocorrelation
+
+    Args:
+        mat_signal: signal for a specific conversation
+
+    Returns:
+        mat_signal: AR model resisdual of signal
+    """
 
     return mat_signal
 
@@ -83,7 +97,7 @@ def load_electrode_data(args, sid, elec_id, stitch, z_score=False):
         if args.sid == 7170:
             process_flag = "preprocessed_v2"  # second version of 7170
         if args.sid == 798:
-            process_flag = 'preprocessed_allElec'
+            process_flag = "preprocessed_allElec"
     elif args.project_id == "podcast":
         DATA_DIR = "/projects/HASSON/247/data/podcast-data"
         process_flag = "preprocessed_all"
@@ -114,6 +128,7 @@ def load_electrode_data(args, sid, elec_id, stitch, z_score=False):
                 continue
 
             mat_signal = detrend_signal(mat_signal)  # detrend conversation signal
+            mat_signal = autoreg_signal(mat_signal)
             if z_score:  # doing erp
                 mat_signal = stats.zscore(mat_signal)
 

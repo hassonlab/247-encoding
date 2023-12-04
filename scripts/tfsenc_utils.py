@@ -52,7 +52,7 @@ def cv_lm_003_prod_comp(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag):
     else:
         print("running regression with best_lag")
 
-    if args.pca_to == 0:
+    if args.pca_to == 0 or "nopca" in args.datum_mod:
         print(f"No PCA, emb_dim = {Xtes.shape[1]}")
     else:
         print(f"PCA from {Xtes.shape[1]} to {args.pca_to}")
@@ -96,6 +96,54 @@ def cv_lm_003_prod_comp(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag):
         YHAT[fold_tes == i, :] = foldYhat.reshape(-1, nChans)
 
     return (YHAT, Ynew)
+
+
+def cv_lm_003_prod_comp_new(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag):
+    """
+    Used for whisper revision 1. Predicting best lag based on train and predict on
+    test with set lag and get one correlation per fold
+    """
+
+    nSamps = Xtes.shape[0]
+    YHAT = np.zeros((nSamps, 1))
+    Ynew = np.zeros((nSamps, 1))
+
+    rps = []
+    for i in range(0, args.fold_num):
+        Xtraf, Xtesf = Xtra[fold_tra != i], Xtes[fold_tes == i]
+        Ytraf, Ytesf = Ytra[fold_tra != i], Ytes[fold_tes == i]
+
+        Ytesf -= np.mean(Ytraf, axis=0)
+        Ytraf -= np.mean(Ytraf, axis=0)
+
+        # Fit model
+        if args.pca_to == 0 or "nopca" in args.datum_mod:
+            model = make_pipeline(StandardScaler(), LinearRegression())
+        else:
+            model = make_pipeline(
+                StandardScaler(),
+                PCA(args.pca_to, whiten=True),
+                LinearRegression(),
+            )
+        model.fit(Xtraf, Ytraf)
+
+        # pick best lag from train
+        foldYhat = model.predict(Xtraf)
+        rp, _, _ = encColCorr(Ytraf, foldYhat)
+        lag = np.argmax(np.array(rp))
+
+        # predict for test
+        foldYhat = model.predict(Xtesf)
+        rp, _, _ = encColCorr(Ytesf, foldYhat)
+        rps.append([rp[lag]])
+
+        Ynew[fold_tes == i, :] = Ytesf[:, lag].reshape(-1, 1)
+        YHAT[fold_tes == i, :] = foldYhat[:, lag].reshape(-1, 1)
+
+    # Add whole datum correlation
+    rp, _, _ = encColCorr(Ynew, YHAT)
+    rps = [[rp]] + rps
+    return rps
 
 
 @jit(nopython=True)
@@ -212,6 +260,12 @@ def run_regression(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes):
             perm_prod.append(
                 encoding_mp_prod_comp(
                     args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, best_lag
+                )
+            )
+        elif args.model_mod and "pred-lag" in args.model_mod:
+            perm_prod.append(
+                cv_lm_003_prod_comp_new(
+                    args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, -1
                 )
             )
         else:

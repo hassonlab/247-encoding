@@ -134,9 +134,9 @@ def process_datum(args, df, stitch):
     #     except KeyError:
     #         pass
 
-    if args.normalize and args.project_id == "podcast":
-        # HACK replicate Leo's results, no normalize for tfs
-        df = normalize_embeddings(args, df)
+    # if args.normalize and args.project_id == "podcast":
+    #     # HACK replicate Leo's results, no normalize for tfs
+    #     df = normalize_embeddings(args, df)
 
     return df
 
@@ -532,6 +532,9 @@ def mod_datum(args, datum):
     elif "-quarter" in args.datum_mod:
         datum = datum.sample(frac=0.25, random_state=42).sort_index()
 
+    elif "-tenth" in args.datum_mod:
+        datum = datum.sample(frac=0.1, random_state=42).sort_index()
+
     elif "-5000" in args.datum_mod:
         datum_comp = datum[datum.production == 0]
         datum_prod = datum[datum.production == 1]
@@ -571,6 +574,54 @@ def mod_datum(args, datum):
     return datum
 
 
+def select_windows_filter(args, df):
+    for emb_type in EMB_DIMS:
+        if emb_type in args.emb_type:
+            emb_dim = EMB_DIMS[emb_type]
+    emb_win_num = EMB_WINS[args.project_id]
+
+    # filter words with window range
+    start_win = args.window_num[: args.window_num.find("-")]
+    end_win = args.window_num[args.window_num.find("-") + 1 :]
+    end_win = end_win[: end_win.find("-")]
+    assert start_win.isdigit()
+    assert end_win.isdigit()
+
+    def filter_word_for_win(x):
+        if (len(x) > start_idx) and (len(x) <= end_idx):
+            return x
+        else:
+            return None
+
+    print(f"Taking words in window range {start_win} to {end_win}")
+    start_idx = (int(start_win) - 1) * emb_dim
+    end_idx = int(end_win) * emb_dim
+    df["embeddings"] = df.embeddings.apply(filter_word_for_win)
+    df = df[~df.embeddings.isna()]
+    print(f"# of words with correct windows: {len(df)}")
+
+    # select windows
+    if "pca-" in args.window_num:
+        new_window_num = args.window_num[args.window_num.find("pca-") + 4 :]
+        start_win = new_window_num[: new_window_num.find("-")]
+        end_win = new_window_num[new_window_num.find("-") + 1 :]
+        assert start_win.isdigit()
+        assert end_win.isdigit()
+
+        def take_win_per_word(x):
+            return x[new_start_idx:new_end_idx]
+
+        print(f"Taking window range {start_win} to {end_win}")
+        new_start_idx = (int(start_win) - 1) * emb_dim
+        new_end_idx = int(end_win) * emb_dim
+        assert new_start_idx <= start_idx
+        assert new_end_idx <= end_idx
+        df["embeddings"] = df.embeddings.apply(take_win_per_word)
+        df = df[~df.embeddings.isna()]
+
+    return df
+
+
 def select_windows(args, df):
     for emb_type in EMB_DIMS:
         if emb_type in args.emb_type:
@@ -587,7 +638,7 @@ def select_windows(args, df):
 
     def take_win_per_word(x):
         if (len(x) > start_idx) and (len(x) >= end_idx):
-        # if (len(x) > start_idx) and (len(x) == end_idx):
+            # if (len(x) > start_idx) and (len(x) == end_idx):
             emb = x[start_idx:end_idx]
             return emb
         else:
@@ -639,7 +690,17 @@ def run_pca(args, df):
         emb = pca_word.fit_transform(emb).squeeze()  # pca to 1 window
         return emb
 
-    if "pca" in args.window_num:
+    if "pcapca" in args.window_num:  # used for concatenation of symbolic embs
+        print("PCA by word")
+        df["embeddings"] = df.embeddings.apply(word_pca)
+        df_emb = df["embeddings"]
+        embs = np.vstack(df_emb.values)
+        print(f"PCA from {embs.shape[1]} to {pca_to}")
+        pca_output = pca.fit_transform(embs)
+        print(f"PCA explained variance: {sum(pca.explained_variance_)}")
+        print(f"PCA explained variance ratio: {sum(pca.explained_variance_ratio_)}")
+        df["embeddings"] = pca_output.tolist()
+    elif "pca" in args.window_num:
         print("PCA by word")
         df["embeddings"] = df.embeddings.apply(word_pca)
     else:
@@ -664,9 +725,10 @@ def read_datum2(args, stitch):
     Returns:
         DataFrame: processed and filtered datum
     """
-    emb_df = load_datum(args.emb_df_path)
     base_df = load_datum(args.base_df_path)
+    emb_df = load_datum(args.emb_df_path)
     df = pd.concat([base_df, emb_df], axis=1)
+
     print(f"After loading: Datum loads with {len(df)} words")
 
     df = df.loc[~df["conversation_id"].isin(args.bad_convos)]  # filter bad convos
@@ -676,6 +738,10 @@ def read_datum2(args, stitch):
     df = add_convo_onset_offset(args, df, stitch)
     df = drop_nan_embeddings(df)
     print(f"After processing: Datum now has {len(df)} words")
+
+    if "-full-chunk" in args.datum_mod:
+        print("Taking only full 30s utterance chunks")
+        df = df[df.window_num == 1500]
 
     if "-full-win" in args.datum_mod:
         print("Taking full windows only")
@@ -751,9 +817,13 @@ def read_datum(args, stitch):
     if ("all" not in args.window_num) and ("pca" not in args.window_num):
         df = select_windows(args, df)
 
+    if "-pca" in args.window_num:
+        df = select_windows_filter(args, df)
+
     if (
-        args.project_id == "tfs"
-        and args.pca_to > 0
+        # args.project_id == "tfs"
+        # and
+        args.pca_to > 0
         and "-noearlypca" not in args.datum_mod
     ):  # pca
         # HACK

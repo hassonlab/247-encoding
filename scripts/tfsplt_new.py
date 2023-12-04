@@ -316,7 +316,7 @@ def get_elecbrain(electrode):
 def plot_average(pdf):
     print("Plotting Average")
     fig, ax = plt.subplots(figsize=fig_size)
-    axins = inset_axes(ax, width=3, height=1.5, loc=2, borderpad=4)
+    # axins = inset_axes(ax, width=3, height=1.5, loc=2, borderpad=4)
     for mode, subdf in df.groupby(["label", "mode"], axis=0):
         vals = subdf.mean(axis=0)
         err = subdf.sem(axis=0)
@@ -331,8 +331,8 @@ def plot_average(pdf):
             color=cmap[mode],
             ls=smap[mode],
         )
-        layer_num = int(mode[0].replace("layer", ""))
-        axins.scatter(layer_num, max(vals), color=cmap[mode])
+        # layer_num = int(mode[0].replace("layer", ""))
+        # axins.scatter(layer_num, max(vals), color=cmap[mode])
         if len(args.lag_ticks) != 0:
             ax.set_xticks(args.lag_ticks)
             ax.set_xticklabels(args.lag_tick_labels)
@@ -419,7 +419,7 @@ def plot_electrodes(pdf):
     print("Plotting Individual Electrodes")
     for (electrode, sid), subdf in df.groupby(["electrode", "sid"], axis=0):
         fig, ax = plt.subplots(figsize=fig_size)
-        axins = inset_axes(ax, width=3, height=1.5, borderpad=4)
+        # axins = inset_axes(ax, width=3, height=1.5, borderpad=4)
         for (label, _, mode, _), values in subdf.iterrows():
             mode = (label, mode)
             label = "-".join(mode)
@@ -430,8 +430,8 @@ def plot_electrodes(pdf):
                 color=cmap[mode],
                 ls=smap[mode],
             )
-            layer_num = int(mode[0].replace("layer", ""))
-            axins.scatter(layer_num, max(values), color=cmap[mode])
+            # layer_num = int(mode[0].replace("layer", ""))
+            # axins.scatter(layer_num, max(values), color=cmap[mode])
         if len(args.lag_ticks) != 0:
             ax.set_xticks(args.lag_ticks)
             ax.set_xticklabels(args.lag_tick_labels)
