@@ -8,14 +8,14 @@ DT := ${USR}
 #  Configurable options
 # -----------------------------------------------------------------------------
 
-PRJCT_ID := tfs
+PRJCT_ID := podcast
 # {podcast | tfs}
 
 ############## tfs electrode ids ##############
 # 625 Electrode IDs
-SID := 625
-E_LIST := $(shell seq 1 105)
-BC := 
+# SID := 625
+# E_LIST := $(shell seq 1 105)
+# BC := 
 
 # 676 Electrode IDs
 # SID := 676
@@ -45,9 +45,9 @@ SIG_FN :=
 # SIG_FN := --sig-elec-file tfs-sig-file-7170-region-ifg.csv tfs-sig-file-7170-region-ifg.csv
 
 # podcast electrode IDs
-# SID := 777
+SID := 777
 # SID := 661
-# E_LIST :=  $(shell seq 1 115)
+E_LIST :=  $(shell seq 1 115)
 # SID := 662
 # E_LIST :=  $(shell seq 1 100)
 # SID := 717
@@ -67,7 +67,7 @@ SIG_FN :=
 #
 
 ### podcast significant electrode list (if provided, override electrode IDs)
-# SIG_FN := --sig-elec-file podcast_160.csv
+SIG_FN := --sig-elec-file podcast_160.csv
 
 PKL_IDENTIFIER := full
 # {full | trimmed}
@@ -83,8 +83,8 @@ LAGS := -300000 -250000 -200000 200000 250000 300000 # lag300k-50k
 LAGS := -150000 -120000 -90000 90000 120000 150000 # lag150k-30k
 LAGS := -60000 -50000 -40000 -30000 -20000 20000 30000 40000 50000 60000 # lag60k-10k
 LAGS := {-10000..10000..25} # lag10k-25
-LAGS := {-2000..2000..25} # lag2k-25
 LAGS := {-5000..5000..25} # lag5k-25
+LAGS := {-2000..2000..25} # lag2k-25
 
 # Conversation ID (Choose 0 to run for all conversations)
 CONVERSATION_IDX := 0
@@ -94,8 +94,10 @@ CONVERSATION_IDX := 0
 EMB := blenderbot
 EMB := gpt2-xl
 EMB := blenderbot-small
-EMB := gpt2-xl
-CNXT_LEN := 1024
+EMB := gpt-neox-20b
+EMB := gpt-neo-1.3B
+EMB := gpt-neo-2.7B
+CNXT_LEN := 2048
 
 # Choose the window size to average for each point
 WS := 200
@@ -109,7 +111,8 @@ ALIGN_WITH :=
 
 # Choose layer of embeddings to use
 # {1 for glove, 48 for gpt2, 8 for blenderbot encoder, 16 for blenderbot decoder}
-LAYER_IDX := 48
+LAYER_IDX := 0
+LAYER_IDX := $(shell seq 1 32)
 
 # Choose whether to PCA (0 or for no pca)
 PCA_TO := 50
@@ -150,9 +153,9 @@ NM := l2
 
 # {glove50: force glove embeddings for glove50 pred}
 
-EM := shift-emb
-EM := 
 EM := glove50
+EM := 
+EM := shift-emb
 
 
 ############## Datum Modifications ##############
@@ -187,7 +190,7 @@ actually predicted by gpt2} (only used for glove embeddings)
 
 DM := lag2k-25-incorrect
 DM := lag10k-25-all
-DM := lag2k-25-improb
+DM := lag2k-25-all
 
 
 ############## Model Modification ##############
@@ -197,12 +200,13 @@ DM := lag2k-25-improb
 MM := best-lag
 MM := pc-flip-best-lag
 MM := 
+MM := ridge
 
 # Choose the command to run: python runs locally, echo is for debugging, sbatch
 # is for running on SLURM all lags in parallel.
 CMD := echo
-CMD := sbatch submit1.sh
 CMD := python
+CMD := sbatch submit1.sh
 # {echo | python | sbatch submit1.sh}
 
 #TODO: move paths to makefile
@@ -283,7 +287,7 @@ run-encoding-layers:
 				$(SH) \
 				$(PSH) \
 				--normalize $(NM)\
-				--output-parent-dir $(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-$(DM)-$(EM)-1024-$$layer \
+				--output-parent-dir $(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-$(DM)-$(EM)-2048-$$layer \
 				--output-prefix $(USR)-$(WS)ms-$(WV);\
 		done; \
 	done;

@@ -55,7 +55,9 @@ def skip_elecs_done(args, electrode_info):
 
     elecs_num = len(electrode_info)
     for elec, count in elecs_counts.most_common():
-        if count == 4:
+        if (args.project_id == "tfs" and count == 4) or (
+            args.project_id == "podcast" and count == 2
+        ):
             print(f"Skipping elec {elec}")
             sid_string = elec[: elec.find("_")]
             if sid_string.isdigit():  # actually a sid
@@ -225,15 +227,16 @@ def parallel_encoding(args, electrode_info, datum, stitch_index, parallel=True):
 
     # if args.emb_type == "gpt2-xl" and args.sid == 676:
     #     parallel = False
+
+    summary_file = os.path.join(args.full_output_dir, "summary.csv")  # summary file
+    # Skipping elecs already done
+    if os.path.exists(args.full_output_dir):  # previous job
+        print("Previously ran the same job, checking for elecs done")
+        electrode_info = skip_elecs_done(args, electrode_info)
+
     if parallel:
         print("Running all electrodes in parallel")
-        summary_file = os.path.join(args.full_output_dir, "summary.csv")  # summary file
-        p = Pool(processes=get_cpu_count())  # multiprocessing
-
-        # Skipping elecs already done
-        if os.path.exists(summary_file):  # previous job
-            print("Previously ran the same job, checking for elecs done")
-            electrode_info = skip_elecs_done(args, electrode_info)
+        p = Pool(2)  # multiprocessing
 
         with open(summary_file, "w") as f:
             writer = csv.writer(f, delimiter=",", lineterminator="\r\n")
@@ -273,7 +276,7 @@ def main():
 
     # Processing significant electrodes or individual subjects
     electrode_info = process_subjects(args)
-    parallel_encoding(args, electrode_info, datum, stitch_index, False)
+    parallel_encoding(args, electrode_info, datum, stitch_index)
 
     return
 

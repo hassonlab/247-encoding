@@ -1,6 +1,6 @@
 #!/bin/bash
-#SBATCH --time=15:10:00
-#SBATCH --mem=64GB
+#SBATCH --time=8:10:00
+#SBATCH --mem=160GB
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=4
 #SBATCH -o 'logs/%A.log'
@@ -9,12 +9,12 @@ if [[ "$HOSTNAME" == *"tiger"* ]]
 then
     echo "It's tiger"
     module load anaconda
-    source activate 247-main
+    source activate 247-main-new
 elif [[ "$HOSTNAME" == *"della"* ]]
 then
     echo "It's Della"
     module load anaconda
-    source activate 247-main
+    source activate /home/hgazula/.conda/envs/247-main
 else
     module load anacondapy
     source activate srm
