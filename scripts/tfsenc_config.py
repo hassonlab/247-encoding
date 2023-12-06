@@ -1,4 +1,5 @@
 import os
+from himalaya.backend import set_backend
 
 
 def create_output_directory(args):
@@ -77,5 +78,7 @@ def setup_environ(args):
     args.full_output_dir = create_output_directory(args)
 
     args.best_lag = -1
+
+    backend = set_backend("cupy", on_error="warn")
 
     return args

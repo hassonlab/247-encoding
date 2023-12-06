@@ -78,7 +78,10 @@ def cv_lm_003_prod_comp(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag):
 
         # Fit model
         if args.model_mod and "ridge" in args.model_mod:
-            model = make_pipeline(StandardScaler(), RidgeCV())
+            alphas = np.logspace(0, 20, 10)
+            model = make_pipeline(StandardScaler(), RidgeCV(alphas=alphas))
+            Xtraf = Xtraf.astype("float32")
+            Ytraf = Ytraf.astype("float32")
         elif args.pca_to == 0 or "nopca" in args.datum_mod:
             model = make_pipeline(StandardScaler(), LinearRegression())
         else:
