@@ -113,6 +113,7 @@ ALIGN_WITH :=
 # {1 for glove, 48 for gpt2, 8 for blenderbot encoder, 16 for blenderbot decoder}
 LAYER_IDX := 0
 LAYER_IDX := $(shell seq 1 32)
+LAYER_IDX := 4 6 7 9 $(shell seq 10 24)
 
 # Choose whether to PCA (0 or for no pca)
 PCA_TO := 50
