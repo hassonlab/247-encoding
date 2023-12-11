@@ -79,6 +79,6 @@ def setup_environ(args):
 
     args.best_lag = -1
 
-    backend = set_backend("cupy", on_error="warn")
+    backend = set_backend("torch_cuda", on_error="warn")  # FIXME
 
     return args

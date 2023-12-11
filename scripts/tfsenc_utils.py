@@ -9,8 +9,12 @@ import numpy as np
 import pandas as pd
 from numba import jit, prange
 from scipy import stats
-from himalaya.ridge import GroupRidgeCV, RidgeCV
-from himalaya.ridge import ColumnTransformerNoStack
+from himalaya.ridge import (
+    GroupRidgeCV,
+    RidgeCV,
+    ColumnTransformerNoStack,
+)
+from himalaya.kernel_ridge import KernelRidge, KernelRidgeCV
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.linear_model import LinearRegression
@@ -79,9 +83,14 @@ def cv_lm_003_prod_comp(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag):
         # Fit model
         if args.model_mod and "ridge" in args.model_mod:
             alphas = np.logspace(0, 20, 10)
-            model = make_pipeline(StandardScaler(), RidgeCV(alphas=alphas))
             Xtraf = Xtraf.astype("float32")
             Ytraf = Ytraf.astype("float32")
+            Xtesf = Xtesf.astype("float32")
+            Ytesf = Ytesf.astype("float32")
+            if Xtra.shape[0] < Xtra.shape[1]:
+                model = make_pipeline(StandardScaler(), KernelRidgeCV(alphas=alphas))
+            else:
+                model = make_pipeline(StandardScaler(), RidgeCV(alphas=alphas))
         elif args.pca_to == 0 or "nopca" in args.datum_mod:
             model = make_pipeline(StandardScaler(), LinearRegression())
         else:
