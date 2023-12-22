@@ -814,6 +814,11 @@ def read_datum(args, stitch):
     df = mod_datum(args, df)  # further filter datum based on datum_mod argument
     print(f"Datum final length: {len(df)}")
 
+    if args.model_mod:
+        if "noise-ceiling" in args.model_mod or "erp" in args.model_mod:
+            df.drop(["embeddings"], axis=1, inplace=True)
+            return df
+
     if ("all" not in args.window_num) and ("pca" not in args.window_num):
         df = select_windows(args, df)
 

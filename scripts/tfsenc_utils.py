@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 from numba import jit, prange
 from scipy import stats
+from scipy.spatial.distance import pdist, squareform
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.linear_model import LinearRegression
@@ -246,6 +247,54 @@ def encoding_mp_prod_comp(
         return rps
     else:
         return rp
+
+
+def noise_ceiling(args, elec_name, datum, signal, mode, rep=10):
+    # specify prod or comp
+    if mode == "comp":
+        datum = datum[datum.speaker != "Speaker1"].copy()
+    elif mode == "prod":
+        datum = datum[datum.speaker == "Speaker1"].copy()
+
+    # sample datum
+    datum.loc[:, "embeddings"] = datum["word"].groupby(datum["word"]).transform("count")
+    datum = datum[datum.embeddings >= rep]
+    datum = datum.groupby("word").sample(n=rep, random_state=42)
+
+    # get signal
+    _, Y = build_XY(args, datum, signal)
+    assert Y.shape[0] % rep == 0
+    word_num = int(Y.shape[0] / rep)
+    Y = Y.reshape(word_num, rep, Y.shape[1])
+
+    # compute corr matrix
+    rps = []
+    for i in np.arange(0, Y.shape[2]):
+        rps.append(1 - pdist(Y[:, :, i], "correlation"))
+    rps = np.vstack(rps)
+
+    # aggregate summaries
+    rps_result = []
+    rps_result.append(rps.min(axis=1))
+    rps_result.append(np.percentile(rps, 25, axis=1))
+    rps_result.append(np.percentile(rps, 50, axis=1))
+    rps_result.append(np.percentile(rps, 75, axis=1))
+    rps_result.append(rps.max(axis=1))
+    rps_result.append(rps.mean(axis=1))
+    rps_result.append(np.std(rps, axis=1))
+    rps_result.append(stats.sem(rps, axis=1))
+    rps_result = np.vstack(rps_result)
+
+    # write file
+    trial_str = append_jobid_to_string(args, mode)
+    filename = os.path.join(args.full_output_dir, elec_name + trial_str + ".csv")
+    with open(filename, "w") as csvfile:
+        print("writing file")
+        csvwriter = csv.writer(csvfile)
+        csvwriter.writerows(rps_result)
+    # filename = os.path.join(args.full_output_dir, elec_name + trial_str + ".npy")
+    # np.save(filename, rps)
+    return word_num
 
 
 def run_regression(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes):

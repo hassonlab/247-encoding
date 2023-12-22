@@ -16,6 +16,7 @@ from tfsenc_utils import (
     get_kfolds,
     run_regression,
     write_encoding_results,
+    noise_ceiling,
 )
 from collections import Counter
 from utils import load_pickle, main_timer, write_config
@@ -153,6 +154,17 @@ def single_electrode_encoding(electrode, args, datum, stitch_index):
     if len(elec_datum) == 0:  # datum has no words, meaning no signal
         print(f"{args.sid} {elec_name} No Signal")
         return (args.sid, elec_name, 0, 0)
+
+    if args.model_mod:
+        if "noise-ceiling" in args.model_mod:
+            word_num_comp = noise_ceiling(
+                args, str(sid) + "_" + elec_name, elec_datum, elec_signal, "comp"
+            )
+            word_num_prod = noise_ceiling(
+                args, str(sid) + "_" + elec_name, elec_datum, elec_signal, "prod"
+            )
+            print(f"{args.sid} {elec_name} Prod: {word_num_prod} Comp: {word_num_comp}")
+            return (sid, elec_name, word_num_prod, word_num_comp)
 
     # Build design matrices
     X, Y = build_XY(args, elec_datum, elec_signal)
