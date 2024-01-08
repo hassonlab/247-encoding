@@ -10,11 +10,17 @@ import pandas as pd
 from numba import jit, prange
 from scipy import stats
 from himalaya.ridge import (
-    GroupRidgeCV,
     RidgeCV,
+    GroupRidgeCV,
     ColumnTransformerNoStack,
 )
-from himalaya.kernel_ridge import KernelRidge, KernelRidgeCV
+from himalaya.kernel_ridge import (
+    KernelRidge,
+    KernelRidgeCV,
+    MultipleKernelRidgeCV,
+    ColumnKernelizer,
+    Kernelizer,
+)
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from sklearn.linear_model import LinearRegression
@@ -87,7 +93,55 @@ def cv_lm_003_prod_comp(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag):
             Ytraf = Ytraf.astype("float32")
             Xtesf = Xtesf.astype("float32")
             Ytesf = Ytesf.astype("float32")
-            if Xtra.shape[0] < Xtra.shape[1]:
+            if "bridge" in args.model_mod:
+                if "concat-3l" in args.datum_mod:
+                    ck = ColumnKernelizer(
+                        [
+                            (
+                                "layer_13",
+                                # StandardScaler(),
+                                Kernelizer(kernel="linear"),
+                                slice(0, 6144),
+                            ),
+                            (
+                                "layer_22",
+                                # StandardScaler(),
+                                Kernelizer(kernel="linear"),
+                                slice(6144, 12288),
+                            ),
+                            (
+                                "layer_31",
+                                # StandardScaler(),
+                                Kernelizer(kernel="linear"),
+                                slice(12288, 18432),
+                            ),
+                        ]
+                    )
+                elif "concat-2l" in args.datum_mod:
+                    ck = ColumnKernelizer(
+                        [
+                            (
+                                "layer_13",
+                                # StandardScaler(),
+                                Kernelizer(kernel="linear"),
+                                slice(0, 6144),
+                            ),
+                            (
+                                "layer_31",
+                                # StandardScaler(),
+                                Kernelizer(kernel="linear"),
+                                slice(6144, 12288),
+                            ),
+                        ]
+                    )
+
+                model = make_pipeline(
+                    ck,
+                    MultipleKernelRidgeCV(
+                        kernels="precomputed", solver_params=dict(alphas=alphas)
+                    ),
+                )
+            elif Xtra.shape[0] < Xtra.shape[1]:
                 model = make_pipeline(StandardScaler(), KernelRidgeCV(alphas=alphas))
             else:
                 model = make_pipeline(StandardScaler(), RidgeCV(alphas=alphas))
@@ -109,9 +163,8 @@ def cv_lm_003_prod_comp(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag):
 
         # Predict
         foldYhat = model.predict(Xtesf)
-
         Ynew[fold_tes == i, :] = Ytesf.reshape(-1, nChans)
-        YHAT[fold_tes == i, :] = foldYhat.reshape(-1, nChans)
+        YHAT[fold_tes == i, :] = foldYhat.cpu().numpy().reshape(-1, nChans)
 
     return (YHAT, Ynew)
 

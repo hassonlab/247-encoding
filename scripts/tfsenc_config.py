@@ -79,6 +79,7 @@ def setup_environ(args):
 
     args.best_lag = -1
 
-    backend = set_backend("torch_cuda", on_error="warn")  # FIXME
+    if args.model_mod and "ridge" in args.model_mod:
+        backend = set_backend("torch_cuda", on_error="warn")  # HACK
 
     return args

@@ -274,6 +274,40 @@ def main():
     stitch_index = return_stitch_index(args)
     datum = read_datum(args, stitch_index)
 
+    def concat(x):
+        return np.concatenate((x["embeddings2"], x["embeddings"]))
+
+    if "concat-3l" in args.datum_mod:
+        args.emb_df_path = args.emb_df_path.replace("layer_13", "layer_22")
+        datum2 = read_datum(args, stitch_index)
+        datum.rename(columns={"embeddings": "embeddings2"}, inplace=True)
+        datum = datum.merge(
+            datum2[["word", "adjusted_onset", "embeddings"]],
+            on=["word", "adjusted_onset"],
+        )
+        datum["embeddings"] = datum.apply(concat, axis=1)
+        datum.drop("embeddings2", axis=1, inplace=True)
+
+        args.emb_df_path = args.emb_df_path.replace("layer_22", "layer_31")
+        datum3 = read_datum(args, stitch_index)
+        datum.rename(columns={"embeddings": "embeddings2"}, inplace=True)
+        datum = datum.merge(
+            datum3[["word", "adjusted_onset", "embeddings"]],
+            on=["word", "adjusted_onset"],
+        )
+        datum["embeddings"] = datum.apply(concat, axis=1)
+        datum.drop("embeddings2", axis=1, inplace=True)
+    elif "concat-2l" in args.datum_mod:
+        args.emb_df_path = args.emb_df_path.replace("layer_13", "layer_31")
+        datum2 = read_datum(args, stitch_index)
+        datum.rename(columns={"embeddings": "embeddings2"}, inplace=True)
+        datum = datum.merge(
+            datum2[["word", "adjusted_onset", "embeddings"]],
+            on=["word", "adjusted_onset"],
+        )
+        datum["embeddings"] = datum.apply(concat, axis=1)
+        datum.drop("embeddings2", axis=1, inplace=True)
+
     # Processing significant electrodes or individual subjects
     electrode_info = process_subjects(args)
     parallel = False
