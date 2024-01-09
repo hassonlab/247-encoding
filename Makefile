@@ -25,14 +25,14 @@ E_LIST := $(shell seq 1 125)
 BC := --bad-convos 38 39
 
 # 717 Electrode IDs
-# SID := 7170
-# E_LIST := $(shell seq 1 256)
-# BC :=
+SID := 7170
+E_LIST := $(shell seq 1 256)
+BC :=
 
 # 798 Electrode IDs
-SID := 798
-E_LIST := $(shell seq 1 198)
-BC :=
+# SID := 798
+# E_LIST := $(shell seq 1 198)
+# BC :=
 
 # Sig file will override whatever electrodes you choose
 SIG_FN := 
@@ -101,10 +101,10 @@ EMB := blenderbot-small
 EMB := whisper-tiny.en-acoustic
 EMB := symbolic-lang
 EMB := whisper-tiny.en-encoder
-EMB := whisper-tiny.en-encoder-var-win
-EMB := whisper-tiny.en-decoder-nots
 EMB := gpt2-xl
-CNXT_LEN := 1024
+EMB := whisper-tiny.en-decoder-nots
+EMB := whisper-tiny.en-encoder-var-win
+CNXT_LEN := 1
 
 # Choose the window size to average for each point
 WS := 100
@@ -121,10 +121,8 @@ ALIGN_WITH :=
 
 # Choose layer of embeddings to use
 # {1 for glove, 48 for gpt2, 8 for blenderbot encoder, 16 for blenderbot decoder}
-LAYER_IDX := 4
 LAYER_IDX := 3
-LAYER_IDX := $(shell seq 0 48)
-LAYER_IDX := 36
+LAYER_IDX := 4
 
 # Choose whether to PCA (0 or for no pca)
 PCA_TO := 50
@@ -156,8 +154,8 @@ WN := nooverlap
 WN := 0-1499
 WN := $(shell seq 1 10)
 WN := $(shell seq 10 20)
-WN := pcapca
 WN := all
+WN := pcapca
 
 
 # Choose the command to run: python runs locally, echo is for debugging, sbatch
@@ -225,7 +223,7 @@ DM := lag2k-25-all-0
 DM := lag2k-25-all-noearlypca
 DM := lag5k-20-all-full-chunk-4
 DM := lag5k-20-all-win20
-DM := lag10k-25-quarter
+DM := lag10k-25-all-full-concat-nopca
 
 ############## Model Modification ##############
 # {best-lag: run encoding using the best lag (lag model with highest correlation)}

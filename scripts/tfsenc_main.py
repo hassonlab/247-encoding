@@ -306,21 +306,31 @@ def main():
     else:
         datum = read_datum(args, stitch_index)
         if "concat" in args.datum_mod:
-            if "de-concat" in args.datum_mod:
+            if "de-concat" in args.datum_mod:  # add decoder to speech/acoustic
                 args.emb_df_path = (
                     args.emb_df_path.replace("encoder", "decoder-nots")
                     .replace("layer_04", "layer_03")
                     .replace("layer_00", "layer_03")
                 )
                 args.base_df_path = args.base_df_path.replace("encoder", "decoder-nots")
-            if "ac-concat" in args.datum_mod:
+            if "ac-concat" in args.datum_mod:  # add acoustic to speech
                 args.emb_df_path = args.emb_df_path.replace("layer_04", "layer_00")
-            if "symspeech-concat" in args.datum_mod:
+            if "symspeech-concat" in args.datum_mod:  # add symspeech to speech
                 args.emb_df_path = f"/scratch/gpfs/kw1166/247-encoding/data/tfs/{args.sid}/pickles/embeddings/symbolic-speech/full/cnxt_0001/layer_00.pkl"
                 args.emb_type = "symbolic-speech"
-            if "symlang-concat" in args.datum_mod:
+            if "symlang-concat" in args.datum_mod:  # add symlang to lang
                 args.emb_df_path = f"/scratch/gpfs/kw1166/247-encoding/data/tfs/{args.sid}/pickles/embeddings/symbolic-lang/full/cnxt_0001/layer_00.pkl"
                 args.emb_type = "symbolic-lang"
+            if "full-concat" in args.datum_mod:
+                args.emb_df_path = (
+                    args.emb_df_path.replace("decoder", "full")
+                    .replace("encoder-var-win", "full")
+                    .replace("layer_04", "layer_03")
+                )
+                args.base_df_path = args.base_df_path.replace(
+                    "decoder", "full"
+                ).replace("encoder-var-win", "full")
+                args.window_num = "all"
             datum2 = read_datum(args, stitch_index)
 
             def concat(x):
