@@ -56,6 +56,7 @@ SIG_FN := --sig-elec-file pod-micro-ifg.csv
 SIG_FN := --sig-elec-file 717-all.csv
 SIG_FN := --sig-elec-file 717-ifg.csv
 SIG_FN := --sig-elec-file podcast_all.csv
+SIG_FN := --sig-elec-file podcast_0shot.csv
 # SIG_FN := --sig-elec-file 160-phase-5000-sig-elec-glove50d-perElec-FDR-01-LH_newVer.csv
 # SIG_FN := --sig-elec-file 129-phase-5000-sig-elec-glove50d-perElec-FDR-01-LH.csv
 
@@ -76,7 +77,8 @@ EMB := blenderbot
 EMB := blenderbot-small
 EMB := gpt2-xl
 EMB := glove50
-CNXT_LEN := 1023
+EMB := symbolic
+CNXT_LEN := 1024
 
 # Choose the window size to average for each point
 WS := 200
@@ -88,8 +90,8 @@ ALIGN_WITH := gpt2-xl blenderbot-small
 ALIGN_WITH := gpt2 glove
 
 # Choose layer
-# {1 for glove, 48 for gpt2}
-LAYER_IDX := 1
+# {1 for glove, 48 for gpt2, 1~7 for symbolic}
+LAYER_IDX := 9
 
 # Choose whether to PCA
 PCA_TO := 50
@@ -110,6 +112,8 @@ WV := all
 
 # Choose the command to run: python runs locally, echo is for debugging, sbatch
 # is for running on SLURM all lags in parallel.
+CMD := echo
+CMD := python
 CMD := sbatch submit1.sh
 # {echo | python | sbatch submit1.sh}
 
@@ -157,10 +161,45 @@ run-encoding:
 		$(SH) \
 		$(PSH) \
 		--normalize $(NM)\
-		--output-parent-dir 0shot-$(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-concat5-6 \
+		--output-parent-dir 0shot-$(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-$(LAYER_IDX)-4 \
 		--output-prefix '' \
 		--save-pred \
 		--test-near-neighbor
+
+
+IDX :=  4
+IDX :=  $(shell seq 1 61)
+run-encoding-oneout:
+	mkdir -p logs
+	for col_idx in $(IDX); do\
+		$(CMD) code/$(FILE).py \
+			--project-id $(PRJCT_ID) \
+			--pkl-identifier $(PKL_IDENTIFIER) \
+			--datum-emb-fn $(DS) \
+			--sid $(SID) \
+			--conversation-id $(CONVERSATION_IDX) \
+			--electrodes $(E_LIST) \
+			--emb-type $(EMB) \
+			--context-length $(CNXT_LEN) \
+			--align-with $(ALIGN_WITH) \
+			--window-size $(WS) \
+			--word-value $(WV) \
+			--npermutations $(NPERM) \
+			--lags $(LAGS) \
+			--min-word-freq $(MWF) \
+			--pca-to $(PCA_TO) \
+			--layer-idx $(LAYER_IDX) \
+			$(SIG_FN) \
+			$(SH) \
+			$(PSH) \
+			--normalize $(NM)\
+			--output-parent-dir 0shot-$(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-$(LAYER_IDX)-0shot-$$col_idx-concat3 \
+			--output-prefix '' \
+			--save-pred \
+			--test-near-neighbor;\
+	done;
+
+
 
 # Recommended naming convention for output_folder
 #--output-prefix $(USR)-$(WS)ms-$(WV); \

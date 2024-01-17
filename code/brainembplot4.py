@@ -8,9 +8,7 @@ from statsmodels.stats import multitest
 
 
 def fdr(pvals):
-    _, pcor, _, _ = multitest.multipletests(
-        pvals, method="fdr_bh", is_sorted=False
-    )
+    _, pcor, _, _ = multitest.multipletests(pvals, method="fdr_bh", is_sorted=False)
     return pcor
 
 
@@ -109,8 +107,8 @@ def main():
         # "results/figures-2nd/gpt2-fold-aligned-nnt/0shot-dat-d-2-all3_NYU_class_IFG-n_81.csv",
     ]
 
-    plt_title = "Symbolic-Concat3"
     plt_title = "Symbolic"
+    plt_title = "Symbolic-Concat3"
 
     fig, axes = plt.subplots(1, 1, figsize=(12, 12))
 
@@ -184,9 +182,7 @@ def main():
         means = df_final.mean()
         sems = df_final.sem()
         ax.plot(lags, means, color="blue", lw=lw)
-        ax.fill_between(
-            lags, means - sems, means + sems, alpha=alpha, color="blue"
-        )
+        ax.fill_between(lags, means - sems, means + sems, alpha=alpha, color="blue")
         # means = df_final_mean.mean()
         # sems = df_final_sems.mean()
         # ax.plot(lags, means, color="orange", lw=lw)
@@ -215,9 +211,7 @@ def main():
             lw=lw,
             label="0Shot",
         )
-        ax.fill_between(
-            lags, means - sems, means + sems, alpha=alpha, color="blue"
-        )
+        ax.fill_between(lags, means - sems, means + sems, alpha=alpha, color="blue")
 
         # Plot Near Neighbor
         if "-nnt" in file and mitchell:
@@ -237,10 +231,8 @@ def main():
             lw=lw,
             label="NN",
         )
-        ax.fill_between(
-            lags, means - sems, means + sems, alpha=alpha, color=col
-        )
-
+        ax.fill_between(lags, means - sems, means + sems, alpha=alpha, color=col)
+        breakpoint()
         # Plot Shuffle
         df_sh = df[df.type == "shuffle"]
         df_sh.drop(columns={"Unnamed: 0", "type", "threshold"}, inplace=True)
@@ -253,9 +245,7 @@ def main():
             lw=lw,
             label="Shuffled",
         )
-        ax.fill_between(
-            lags, means - sems, means + sems, alpha=alpha, color="black"
-        )
+        ax.fill_between(lags, means - sems, means + sems, alpha=alpha, color="black")
 
         # Plot Regular vs Near Neighbor Test Asterisks
         if "-nnt" in file and mitchell:
@@ -273,7 +263,9 @@ def main():
             # sig test for gpt2
             second_file = "results/figures-2nd/gpt2-fold-aligned-nnt/0shot-dat-d-2-all3_NYU_class_IFG-n_81.csv"
             second_file = "results/figures-3rd/symbolic-concat3/0shot-dat-at3-all3_NYU_class_IFG-n_81.csv"
-            second_file = "results/figures-3rd/symbolic/0shot-dat-c-9-all3_NYU_class_IFG-n_81.csv"
+            second_file = (
+                "results/figures-3rd/symbolic/0shot-dat-c-9-all3_NYU_class_IFG-n_81.csv"
+            )
             df_second = read_actual(second_file)
             interactions = []
             for i in np.arange(df_actual.shape[1]):
