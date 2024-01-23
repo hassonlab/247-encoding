@@ -15,7 +15,6 @@ from tfsenc_utils import (
     get_groupkfolds,
     get_kfolds,
     run_regression,
-    write_encoding_results,
 )
 from collections import Counter
 from utils import load_pickle, main_timer, write_config
@@ -203,11 +202,9 @@ def single_electrode_encoding(electrode, args, datum, stitch_index):
         prod_test, comp_test = prod_train, comp_train
 
     if len(prod_train[0]) > 0 and len(prod_test[0]) > 0:
-        prod_results = run_regression(args, *prod_train, *prod_test)
-        write_encoding_results(args, prod_results, elec_name, "prod")
+        run_regression(args, *prod_train, *prod_test, elec_name, "prod")
     if len(comp_train[0]) > 0 and len(comp_test[0]) > 0:
-        comp_results = run_regression(args, *comp_train, *comp_test)
-        write_encoding_results(args, comp_results, elec_name, "comp")
+        run_regression(args, *comp_train, *comp_test, elec_name, "comp")
     return (sid, elec_name, len(prod_X), len(comp_X))
 
 
