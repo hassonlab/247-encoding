@@ -55,7 +55,7 @@ def skip_elecs_done(args, electrode_info):
     elecs_num = len(electrode_info)
     for elec, count in elecs_counts.most_common():
         if (args.project_id == "tfs" and count == 4) or (
-            args.project_id == "podcast" and count == 2
+            args.project_id == "podcast" and count == 1
         ):
             print(f"Skipping elec {elec}")
             sid_string = elec[: elec.find("_")]

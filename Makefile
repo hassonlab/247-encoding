@@ -67,7 +67,7 @@ E_LIST :=  $(shell seq 1 115)
 #
 
 ### podcast significant electrode list (if provided, override electrode IDs)
-SIG_FN := --sig-elec-file podcast_160.csv
+# SIG_FN := --sig-elec-file podcast_160.csv
 
 PKL_IDENTIFIER := full
 # {full | trimmed}
@@ -92,12 +92,15 @@ CONVERSATION_IDX := 0
 # Choose which set of embeddings to use
 # {glove50 | gpt2-xl | blenderbot-small}
 EMB := blenderbot
-EMB := gpt2-xl
 EMB := blenderbot-small
-EMB := gpt-neox-20b
 EMB := gpt-neo-1.3B
-EMB := gpt-neo-2.7B
-CNXT_LEN := 2048
+EMB := opt-350m
+EMB := gpt-neox-20b
+EMB := Llama-2-7b-hf-q
+EMB := opt-30b-q
+EMB := opt-6.7b-q
+EMB := glove50
+CNXT_LEN := 1
 
 # Choose the window size to average for each point
 WS := 200
@@ -111,9 +114,10 @@ ALIGN_WITH :=
 
 # Choose layer of embeddings to use
 # {1 for glove, 48 for gpt2, 8 for blenderbot encoder, 16 for blenderbot decoder}
-LAYER_IDX := 0
-LAYER_IDX := $(shell seq 1 32)
-LAYER_IDX := 4 6 7 9 $(shell seq 10 24)
+LAYER_IDX := 
+LAYER_IDX := 01 02 03 04 05 06 07 08 09
+LAYER_IDX := $(shell seq 10 32)
+LAYER_IDX := 00
 
 # Choose whether to PCA (0 or for no pca)
 PCA_TO := 50
@@ -155,8 +159,8 @@ NM := l2
 # {glove50: force glove embeddings for glove50 pred}
 
 EM := glove50
-EM := 
 EM := shift-emb
+EM := 
 
 
 ############## Datum Modifications ##############
@@ -191,6 +195,7 @@ actually predicted by gpt2} (only used for glove embeddings)
 
 DM := lag2k-25-incorrect
 DM := lag10k-25-all
+DM := lag2k-25-all-concat-3l
 DM := lag2k-25-all
 
 
@@ -200,14 +205,15 @@ DM := lag2k-25-all
 # {leave empty for regular encoding}
 MM := best-lag
 MM := pc-flip-best-lag
-MM := 
+MM := bridge
 MM := ridge
+MM := 
 
 # Choose the command to run: python runs locally, echo is for debugging, sbatch
 # is for running on SLURM all lags in parallel.
 CMD := echo
-CMD := python
 CMD := sbatch submit1.sh
+CMD := python
 # {echo | python | sbatch submit1.sh}
 
 #TODO: move paths to makefile
@@ -288,7 +294,7 @@ run-encoding-layers:
 				$(SH) \
 				$(PSH) \
 				--normalize $(NM)\
-				--output-parent-dir $(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-$(DM)-$(EM)-2048-$$layer \
+				--output-parent-dir $(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-$(DM)-$(EM)-$$context-$$layer \
 				--output-prefix $(USR)-$(WS)ms-$(WV);\
 		done; \
 	done;

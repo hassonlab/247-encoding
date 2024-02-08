@@ -4,7 +4,7 @@ import string
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import normalize
-from utils import load_pickle
+from utils import load_pickle, save_pickle
 
 # import gensim.downloader as api
 # import re
@@ -523,8 +523,8 @@ def mod_datum(args, datum):
 
     # Average Embeddings per word
     if "glove" not in args.emb_type and "glove" not in args.emb_mod:
-        if datum[f"{args.emb_type}_token_is_root"].sum() < len(datum):
-            datum = ave_emb(datum)  # average embs per word
+        # if datum[f"{args.emb_type}_token_is_root"].sum() < len(datum): #HACK for quantized
+        datum = ave_emb(datum)  # average embs per word
 
     # Normalize Embeddings
     if args.normalize:
