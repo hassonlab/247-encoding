@@ -55,7 +55,7 @@ def skip_elecs_done(args, electrode_info):
 
     elecs_num = len(electrode_info)
     for elec, count in elecs_counts.most_common():
-        if count == 4:
+        if count == 2:
             print(f"Skipping elec {elec}")
             sid_string = elec[: elec.find("_")]
             if sid_string.isdigit():  # actually a sid
@@ -228,7 +228,7 @@ def parallel_encoding(args, electrode_info, datum, stitch_index, parallel=True):
     if parallel:
         print("Running all electrodes in parallel")
         summary_file = os.path.join(args.full_output_dir, "summary.csv")  # summary file
-        p = Pool(processes=get_cpu_count())  # multiprocessing
+        p = Pool(4)  # multiprocessing
 
         # Skipping elecs already done
         if os.path.exists(summary_file):  # previous job
@@ -273,7 +273,7 @@ def main():
 
     # Processing significant electrodes or individual subjects
     electrode_info = process_subjects(args)
-    parallel_encoding(args, electrode_info, datum, stitch_index, False)
+    parallel_encoding(args, electrode_info, datum, stitch_index)
 
     return
 

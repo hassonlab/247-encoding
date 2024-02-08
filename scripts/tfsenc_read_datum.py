@@ -544,14 +544,33 @@ def read_datum(args, stitch):
     Returns:
         DataFrame: processed and filtered datum
     """
-    emb_df = load_datum(args.emb_df_path)
-    base_df = load_datum(args.base_df_path)
+    # emb_df = load_datum(args.emb_df_path)
+    # base_df = load_datum(args.base_df_path)
 
-    df = pd.merge(
-        base_df, emb_df, left_index=True, right_index=True
-    )  # TODO Needs testing (either bert_utterance or whisper)
+    # if len(emb_df) != len(base_df):
+    #     df = pd.merge(
+    #         base_df, emb_df, left_index=True, right_index=True
+    #     )  # TODO Needs testing (either bert_utterance or whisper)
+    # else:  # HACK until pickling is fixed
+    #     base_df.reset_index(drop=False, inplace=True)
+    #     df = pd.concat([base_df, emb_df], axis=1)
+
+    print("Creating dataframe for Rephael")
+    df = pd.DataFrame.from_dict(load_pickle("data/podcast/777/pickles/777_full_labels.pkl")["labels"])
+    df["adjusted_onset"] = df.onset
+    df["adjusted_offset"] = df.offset
+    
+    base_df = pd.read_csv("data/podcast/888/timed-transcript.csv",header=None)
+    base_df.columns = ["word","onset","offset","accuracy","speaker","is_nonword"]
+    if "rephael1" in args.emb_mod:
+        embs = load_pickle("data/podcast/888/podcast_rephael.pkl")["increment_sum_ws_32"]
+    elif "rephael2" in args.emb_mod:
+        embs = load_pickle("data/podcast/888/podcast_rephael.pkl")["ws_32"]
+    breakpoint()
+    base_df["embeddings"] = embs.tolist()
+    df = df.merge(base_df.loc[:,("word","onset","embeddings")],how="inner",on=["word","onset"])
+
     print(f"After loading: Datum loads with {len(df)} words")
-
     df = process_conversations(args, df, stitch)
     df = process_embeddings(args, df)
     print(f"After processing: Datum now has {len(df)} words")
