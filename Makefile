@@ -84,6 +84,7 @@ LAGS := -150000 -120000 -90000 90000 120000 150000 # lag150k-30k
 LAGS := -60000 -50000 -40000 -30000 -20000 20000 30000 40000 50000 60000 # lag60k-10k
 LAGS := {-10000..10000..25} # lag10k-25
 LAGS := {-2000..2000..25} # lag2k-25
+LAGS := {-5000..5000..25} # lag5k-25
 
 # Conversation ID (Choose 0 to run for all conversations)
 CONVERSATION_IDX := 0
@@ -104,6 +105,7 @@ ALIGN_WITH := blenderbot-small
 ALIGN_WITH := gpt2-xl
 ALIGN_WITH := glove50 gpt2-xl blenderbot-small
 ALIGN_WITH := $(EMB)
+ALIGN_WITH := 
 
 # Choose layer of embeddings to use
 # {1 for glove, 48 for gpt2, 8 for blenderbot encoder, 16 for blenderbot decoder}
@@ -129,16 +131,28 @@ WV := all
 NM := l2
 # {l1 | l2 | max}
 
-# Choose the command to run: python runs locally, echo is for debugging, sbatch
-# is for running on SLURM all lags in parallel.
-CMD := echo
-CMD := sbatch submit1.sh
-CMD := python
-# {echo | python | sbatch submit1.sh}
+############## Embedding Modification ##############
+# {-rand: random datum (random embeddings)}
+# {-arb: arbitrary datum (arbitrary embeddings, same for same word)}
 
-# datum
-# DS := podcast-datum-glove-50d.csv
-# DS := podcast-datum-gpt2-xl-c_1024-previous-pca_50d.csv
+# {shift-emb: shifts embeddings (eg, from n-1 to n)}
+# {shift-emb1: shifts embeddings (eg, from n-1 to n)}
+# {shift-emb2: shifts embeddings 2 times (eg, from n-1 to n+1)}
+# ... etc
+# {shift-embn: shifts embeddings (eg, from n-1 to n-2)}
+# {shift-embn1: shifts embeddings (eg, from n-1 to n-2)}
+# {shift-embn2: shifts embeddings 2 times (eg, from n-1 to n-3)}
+# ... etc
+
+# {concat-emb: concat embeddings (eg, n-1 + n)}
+# {concat-emb2: concat embeddings (eg, n-1 + n + n+1)}
+# ... etc
+
+# {glove50: force glove embeddings for glove50 pred}
+
+EM := shift-emb
+EM := 
+EM := glove50
 
 
 ############## Datum Modifications ##############
@@ -169,28 +183,12 @@ outside of the conversation range (currently not used)
 #	{gpt2-pred: choose all words, for words incorrectly predicted by gpt2, use embeddings of the words \
 actually predicted by gpt2} (only used for glove embeddings)
 
-# 3. Embedding manipulation {-rand, -arb, shift-emb, concat-emb}
-# {-rand: random datum (random embeddings)}
-# {-arb: arbitrary datum (arbitrary embeddings, same for same word)}
-
-# {shift-emb: shifts embeddings (eg, from n-1 to n)}
-# {shift-emb1: shifts embeddings (eg, from n-1 to n)}
-# {shift-emb2: shifts embeddings 2 times (eg, from n-1 to n+1)}
-# ... etc
-# {shift-embn: shifts embeddings (eg, from n-1 to n-2)}
-# {shift-embn1: shifts embeddings (eg, from n-1 to n-2)}
-# {shift-embn2: shifts embeddings 2 times (eg, from n-1 to n-3)}
-# ... etc
-
-# {concat-emb: concat embeddings (eg, n-1 + n)}
-# {concat-emb2: concat embeddings (eg, n-1 + n + n+1)}
-# ... etc
-
 # 3. {everything else is purely for the result folder name}
 
 DM := lag2k-25-incorrect
 DM := lag10k-25-all
 DM := lag2k-25-improb
+
 
 ############## Model Modification ##############
 # {best-lag: run encoding using the best lag (lag model with highest correlation)}
@@ -199,6 +197,13 @@ DM := lag2k-25-improb
 MM := best-lag
 MM := pc-flip-best-lag
 MM := 
+
+# Choose the command to run: python runs locally, echo is for debugging, sbatch
+# is for running on SLURM all lags in parallel.
+CMD := echo
+CMD := sbatch submit1.sh
+CMD := python
+# {echo | python | sbatch submit1.sh}
 
 #TODO: move paths to makefile
 
@@ -238,13 +243,14 @@ run-encoding:
 		--pca-to $(PCA_TO) \
 		--layer-idx $(LAYER_IDX) \
 		--datum-mod $(DM) \
+		--emb-mod $(EM) \
 		--model-mod $(MM) \
 		$(BC) \
 		$(SIG_FN) \
 		$(SH) \
 		$(PSH) \
 		--normalize $(NM)\
-		--output-parent-dir $(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-$(DM) \
+		--output-parent-dir $(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-$(DM)-$(EM) \
 		--output-prefix $(USR)-$(WS)ms-$(WV);\
 
 
@@ -270,13 +276,14 @@ run-encoding-layers:
 				--pca-to $(PCA_TO) \
 				--layer-idx $$layer \
 				--datum-mod $(DM) \
+				--emb-mod $(EM) \
 				--model-mod $(MM) \
 				$(BC) \
 				$(SIG_FN) \
 				$(SH) \
 				$(PSH) \
 				--normalize $(NM)\
-				--output-parent-dir $(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-$(DM)-1024-$$layer \
+				--output-parent-dir $(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-$(DM)-$(EM)-1024-$$layer \
 				--output-prefix $(USR)-$(WS)ms-$(WV);\
 		done; \
 	done;
@@ -375,165 +382,3 @@ run-erp:
 		$(SIG_FN) \
 		--output-parent-dir $(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-erp-$(DM) \
 		--output-prefix $(USR)-$(WS)ms-$(WV);\
-
-
-# -----------------------------------------------------------------------------
-# Plotting
-# -----------------------------------------------------------------------------
-
-########################## Regular Plotting Parameters ##########################
-# LAGS_PLT: lags to plot (should have the same lags as the data files from formats)
-# LAGS_SHOW: lags to show in plot (lags that we want to plot, could be all or part of LAGS_PLT)
-
-# X_VALS_SHOW: x-values for those lags we want to plot (same length as LAGS_SHOW) \
-(for regular encoding, X_VALS_SHOW should be the same as LAGS_SHOW) \
-(for concatenated lags, such as type Quardra and type Final plots, X_VALS_SHOW is different from LAGS_SHOW)
-
-# LAG_TKS: lag ticks (tick marks to show on the x-axis) (optional)
-# LAT_TK_LABLS: lag tick labels (tick mark lables to show on the x-axis) (optional)
-
-# Plotting for vanilla encoding (no concatenated lags)
-LAGS_PLT := $(LAGS)
-LAGS_SHOW := $(LAGS)
-X_VALS_SHOW := $(LAGS_SHOW)
-LAG_TKS := 
-LAG_TK_LABLS :=
-
-# Plotting for type Quardra (four different concatenated lags for 247)
-# LAGS_PLT := {-300000..-150000..50000} -120000 -90000 {-60000..-20000..10000} {-10000..10000..25} {20000..60000..10000} 90000 120000 {150000..300000..50000}
-# LAGS_SHOW := $(LAGS_PLT)
-# X_VALS_SHOW := {-28000..-16000..2000} {-15000..-12000..1000} {-10000..10000..25} {12000..15000..1000} {16000..28000..2000}
-# LAG_TKS := --lag-ticks {-28..28..2}
-# LAG_TK_LABLS := --lag-tick-labels -300 -250 -200 -150 -120 -90 -60 -40 -20 {-10..10..2} 20 40 60 90 120 150 200 250 300
-
-# Plotting for type Final (final plots for 247) 
-# LAGS_PLT := {-300000..-150000..50000} -120000 -90000 {-60000..-20000..10000} {-10000..10000..25} {20000..60000..10000} 90000 120000 {150000..300000..50000}
-# LAGS_SHOW := -300000 -60000 -30000 {-10000..10000..25} 30000 60000 300000
-# X_VALS_SHOW := -16000 -14000 -12000 {-10000..10000..25} 12000 14000 16000
-# LAG_TKS := --lag-ticks {-16..16..2}
-# LAG_TK_LABLS := --lag-tick-labels -300 -60 -30 {-10..10..2} 30 60 300
-
-# zoomed-in version (from -2s to 2s)
-# LAGS_SHOW := {-2000..2000..25}
-# X_VALS_SHOW := {-2000..2000..25}
-# LAG_TKS := 
-# LAG_TK_LABLS :=
-
-########################## Other Plotting Parameters ##########################
-# Line color by (Choose what lines colors are decided by) (required)
-# { --lc-by labels | --lc-by keys }
-
-# Line style by (Choose what line styles are decided by) (required)
-# { --ls-by labels | --ls-by keys }
-
-# Split Direction, if any (Choose how plots are split) (optional)
-# {  | --split horizontal | --split vertical }
-
-# Split by, if any (Choose how lines are split into plots) (Only effective when Split is not empty) (optional)
-# {  | --split-by labels | --split-by keys }
-
-PLT_PARAMS := --lc-by labels --ls-by keys # plot for just one key (podcast plots)
-PLT_PARAMS := --lc-by labels --ls-by keys --split horizontal --split-by keys # plot for prod+comp (247 plots)
-
-# Figure Size (width height)
-FIG_SZ:= 15 6
-FIG_SZ:= 18 6
-
-# Note: if lc_by = labels, order formats by: glove (blue), gpt2 (orange), bbot decoder (green), fourth label (red)
-
-# Note: when providing sig elec files, provide them in the (sid keys) combination order \
-For instance, if sid = 625 676, keys = prod comp \
-sig elec files should be in this order: (625 prod)(625 comp)(676 prod)(676 comp) \
-The number of sig elec files should also equal # of sid * # of keys
-
-
-plot-new:
-	rm -f results/figures/*
-	python scripts/tfsplt_new.py \
-		--sid 625 \
-		--formats \
-			'results/tfs/20221012-glove-concat/kw-tfs-full-625-glove50-lag2k-25-all/*/*_%s.csv' \
-			'results/tfs/kw-tfs-full-625-glove50-lag2k-25-all-aligned/*/*_%s.csv' \
-			'results/tfs/kw-tfs-full-625-gpt2-xl-lag2k-25-all/*/*_%s.csv' \
-			'results/tfs/kw-tfs-full-625-gpt2-xl-lag2k-25-all-aligned/*/*_%s.csv' \
-			'results/tfs/kw-tfs-full-625-gpt2-xl-lag2k-25-all-shift-emb/*/*_%s.csv' \
-		--labels glove glove-aligned gpt2-n-1 gpt2-n-1-aligned gpt2-n \
-		--keys comp prod \
-		$(SIG_FN) \
-		--fig-size $(FIG_SZ) \
-		--lags-plot $(LAGS_PLT) \
-		--lags-show $(LAGS_SHOW) \
-		--x-vals-show $(X_VALS_SHOW) \
-		$(LAG_TKS) \
-		$(LAG_TK_LABLS) \
-		$(PLT_PARAMS) \
-		--outfile results/figures/tfs-625-gpt2-sig.pdf
-	rsync -av results/figures/ ~/tigress/247-encoding-results/
-
-
-# HAS_CTX := --has-ctx
-SIG_ELECS := --sig-elecs
-
-CONDS := all correct incorrect
-CONDS := all flip
-
-plot_layers:
-	rm -f results/figures/*
-	python scripts/tfsplt_layer.py \
-		--sid 625 \
-		--layer-num 16 \
-		--top-dir results/tfs/bbot-layers-625 \
-		--modes comp prod \
-		--conditions $(CONDS) \
-		$(HAS_CTX) \
-		$(SIG_ELECS) \
-		--outfile results/figures/625-ericplots-bbot.pdf
-
-
-# -----------------------------------------------------------------------------
-# Miscellaneous
-# -----------------------------------------------------------------------------
-
-# SP := 1
-
-# sig-test:
-# 	rm -f results/figures/*
-# 	python scripts/sig_test.py \
-# 		--sid 676 \
-# 		--formats \
-# 			'results/tfs/625-676/kw-tfs-full-676-glove50-lag10-25/kw-200ms-all-676/*_%s.csv' \
-# 		--labels glove \
-# 		--keys prod comp \
-# 		--values $(LAGS) \
-# 		$(SIG_FN) \
-# 		--sig-percents $(SP)
-
-
-# make sure the lags and the formats are in the same order
-LAGS1 := {-10000..10000..25}
-LAGS2 := -60000 -50000 -40000 -30000 -20000 20000 30000 40000 50000 60000
-LAGS3 := -150000 -120000 -90000 90000 120000 150000
-LAGS4 := -300000 -250000 -200000 200000 250000 300000
-# LAGS_FINAL := -300000 -60000 -30000 {-10000..10000..25} 30000 60000 300000 # final
-LAGS_FINAL := -99999999 # select all the lags that are concatenated (quardra)
-
-
-concat-lags:
-	python scripts/tfsenc_concat.py \
-		--formats \
-			'results/tfs/625-676/kw-tfs-full-676-gpt2-xl-ctx-128-lag10-25/kw-200ms-all-676/' \
-			'results/tfs/625-676/kw-tfs-full-676-gpt2-xl-ctx-128-lag60-10k/kw-200ms-all-676/' \
-			'results/tfs/625-676/kw-tfs-full-676-gpt2-xl-ctx-128-lag150-30k/kw-200ms-all-676/' \
-			'results/tfs/625-676/kw-tfs-full-676-gpt2-xl-ctx-128-lag300-50k/kw-200ms-all-676/' \
-		--lags \
-			$(LAGS1) \
-			$(LAGS2) \
-			$(LAGS3) \
-			$(LAGS4) \
-		--lags-final $(LAGS_FINAL) \
-		--output-dir results/tfs/plot-676-gpt2-xl-ctx-128-quardra/kw-200ms-all-676/
-
-
-# plot-autocor:
-# 	$(CMD) scripts/test.py
-

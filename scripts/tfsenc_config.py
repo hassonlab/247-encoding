@@ -56,7 +56,7 @@ def setup_environ(args):
     MODEL_EMB_DIR = os.path.join(EMB_DIR, args.emb_type, args.pkl_identifier)
 
     if args.emb_type == "glove50":
-        args.layer_idx = 1
+        args.layer_idx = 0
         args.context_length = 1
 
     args.base_df_path = os.path.join(MODEL_EMB_DIR, "base_df.pkl")

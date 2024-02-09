@@ -6,6 +6,7 @@ from multiprocessing import Pool
 
 import mat73
 import numpy as np
+import pandas as pd
 from numba import jit, prange
 from scipy import stats
 from sklearn.preprocessing import StandardScaler
@@ -76,14 +77,18 @@ def cv_lm_003_prod_comp(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag):
             model = make_pipeline(StandardScaler(), LinearRegression())
         else:
             model = make_pipeline(
-                StandardScaler(), PCA(args.pca_to, whiten=True), LinearRegression()
+                StandardScaler(),
+                PCA(args.pca_to, whiten=True),
+                LinearRegression(),
             )
         model.fit(Xtraf, Ytraf)
 
         if lag != -1:
             B = model.named_steps["linearregression"].coef_
             assert lag < B.shape[0], f"Lag index out of range"
-            B = np.repeat(B[lag, :][np.newaxis, :], B.shape[0], 0)  # best-lag model
+            B = np.repeat(
+                B[lag, :][np.newaxis, :], B.shape[0], 0
+            )  # best-lag model
             model.named_steps["linearregression"].coef_ = B
 
         # Predict
@@ -96,7 +101,9 @@ def cv_lm_003_prod_comp(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag):
 
 
 @jit(nopython=True)
-def build_Y(onsets, convo_onsets, convo_offsets, brain_signal, lags, window_size):
+def build_Y(
+    onsets, convo_onsets, convo_offsets, brain_signal, lags, window_size
+):
     """[summary]
 
     Args:
@@ -172,17 +179,29 @@ def build_XY(args, datum, brain_signal):
     return X, Y
 
 
-def encoding_mp_prod_comp(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag):
+def encoding_mp_prod_comp(
+    args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag
+):
     if args.shuffle:
         np.random.shuffle(Ytra)
         np.random.shuffle(Ytes)
 
+    # train lm and predict
     PY_hat, Y_new = cv_lm_003_prod_comp(
         args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag
     )
-    rp, _, _ = encColCorr(Y_new, PY_hat)
 
-    return rp
+    rps = []
+    # correlation for whole datum
+    rp, _, _ = encColCorr(Y_new, PY_hat)
+    rps.append(rp)
+
+    # correlation per folds
+    for i in np.unique(fold_tes).astype(int):
+        rp_fold, _, _ = encColCorr(Y_new[fold_tes == i], PY_hat[fold_tes == i])
+        rps.append(rp_fold)
+
+    return rps
 
 
 def run_regression(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes):
@@ -208,7 +227,9 @@ def run_regression(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes):
 def get_groupkfolds(datum, X, Y, fold_num=10):
     fold_cat = np.zeros(datum.shape[0])
     grpkfold = GroupKFold(n_splits=fold_num)
-    folds = [t[1] for t in grpkfold.split(X, Y, groups=datum["conversation_id"])]
+    folds = [
+        t[1] for t in grpkfold.split(X, Y, groups=datum["conversation_id"])
+    ]
 
     for i in range(0, len(folds)):
         for row in folds[i]:
@@ -244,12 +265,30 @@ def write_encoding_results(args, cor_results, elec_name, mode):
         None
     """
     trial_str = append_jobid_to_string(args, mode)
-    filename = os.path.join(args.full_output_dir, elec_name + trial_str + ".csv")
+    filename = os.path.join(
+        args.full_output_dir, elec_name + trial_str + ".csv"
+    )
+    fold_filename = os.path.join(
+        args.full_output_dir, elec_name + trial_str + "_fold.csv"
+    )
 
+    if len(cor_results) == 1: # no permutations
+        cor_results = cor_results[0]
+
+    # correlation for whole datum
+    cor_datum = [cor_results[0]]
     with open(filename, "w") as csvfile:
         print("writing file")
         csvwriter = csv.writer(csvfile)
-        csvwriter.writerows(cor_results)
+        csvwriter.writerows(cor_datum)
+
+    # correlation per fold
+    cor_folds = cor_results[1:]
+    df = pd.DataFrame(cor_folds)
+    df.loc[len(df),:] = df.mean(axis=0)
+    df.loc[len(df),:] = df.sem(axis=0,ddof=0)
+    # FIXME I really don't like mean and sem here, maybe we do it in plotting instead?
+    df.to_csv(fold_filename, index=False)
 
     return None
 

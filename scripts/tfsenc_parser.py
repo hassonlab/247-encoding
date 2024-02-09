@@ -47,8 +47,9 @@ def parse_arguments():
     parser.add_argument("--output-parent-dir", type=str, default="test")
     parser.add_argument("--pkl-identifier", type=str, default=None)
 
-    parser.add_argument("--datum-mod", type=str, default="all")
-    parser.add_argument("--model-mod", nargs="?", type=str, default=None)
+    parser.add_argument("--emb-mod", nargs="?", type=str, default="None")
+    parser.add_argument("--datum-mod", nargs="?", type=str, default="all")
+    parser.add_argument("--model-mod", nargs="?", type=str, default="None")
 
     parser.add_argument("--bad-convos", nargs="*", type=int, default=[])
 
@@ -112,5 +113,10 @@ def parse_arguments():
 
     if not args.bad_convos:
         args.bad_convos = []
+
+    if not args.emb_mod:
+        args.emb_mod = "None"
+    if not args.datum_mod:
+        args.datum_mod = "None"
 
     return args

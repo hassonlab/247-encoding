@@ -17,12 +17,13 @@ from tfsenc_utils import (
     run_regression,
     write_encoding_results,
 )
+from collections import Counter
 from utils import load_pickle, main_timer, write_config
 
 
 def get_cpu_count(min_cpus=2):
     if os.getenv("SLURMD_NODENAME"):
-        min_cpus = cpu_count()
+        min_cpus = len(os.sched_getaffinity(0))
 
     return min_cpus
 
@@ -38,6 +39,36 @@ def return_stitch_index(args):
     stitch_file = os.path.join(args.PICKLE_DIR, args.stitch_file)
     stitch_index = [0] + load_pickle(stitch_file)
     return stitch_index
+
+
+def skip_elecs_done(args, electrode_info):
+    # find elecs done
+    elecs_done = [
+        os.path.basename(file)
+        for file in glob.glob(os.path.join(args.full_output_dir, "*_*.csv"))
+    ]
+    elecs_done = [
+        elec.replace("_fold", "").replace("prod", "comp").replace("_comp.csv", "")
+        for elec in elecs_done
+    ]
+    elecs_counts = Counter(elecs_done)
+
+    elecs_num = len(electrode_info)
+    for elec, count in elecs_counts.most_common():
+        if count == 4:
+            print(f"Skipping elec {elec}")
+            sid_string = elec[: elec.find("_")]
+            if sid_string.isdigit():  # actually a sid
+                elec = elec.replace(f"{sid_string}_", "")
+            electrode_info = {
+                key: val
+                for key, val in electrode_info.items()
+                if (val != elec or key[0] != int(sid_string))
+            }
+            elecs_num -= 1
+
+    assert elecs_num == len(electrode_info), "Wrong number of elecs skipped"
+    return electrode_info
 
 
 def process_subjects(args):
@@ -59,6 +90,7 @@ def process_subjects(args):
         sig_elec_list = pd.read_csv(sig_elec_file).rename(
             columns={"electrode": "electrode_name"}
         )
+        df["subject"] = df.subject.astype("int64")
         sid_sig_elec_list = pd.merge(
             df, sig_elec_list, how="inner", on=["subject", "electrode_name"]
         )
@@ -197,6 +229,12 @@ def parallel_encoding(args, electrode_info, datum, stitch_index, parallel=True):
         print("Running all electrodes in parallel")
         summary_file = os.path.join(args.full_output_dir, "summary.csv")  # summary file
         p = Pool(processes=get_cpu_count())  # multiprocessing
+
+        # Skipping elecs already done
+        if os.path.exists(summary_file):  # previous job
+            print("Previously ran the same job, checking for elecs done")
+            electrode_info = skip_elecs_done(args, electrode_info)
+
         with open(summary_file, "w") as f:
             writer = csv.writer(f, delimiter=",", lineterminator="\r\n")
             writer.writerow(("sid", "electrode", "prod", "comp"))
@@ -220,7 +258,6 @@ def parallel_encoding(args, electrode_info, datum, stitch_index, parallel=True):
 
 @main_timer
 def main():
-
     # Read command line arguments
     args = parse_arguments()
 
@@ -236,7 +273,7 @@ def main():
 
     # Processing significant electrodes or individual subjects
     electrode_info = process_subjects(args)
-    parallel_encoding(args, electrode_info, datum, stitch_index)
+    parallel_encoding(args, electrode_info, datum, stitch_index, False)
 
     return
 

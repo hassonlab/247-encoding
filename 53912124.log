@@ -1,0 +1,66 @@
+It's Della
+Requester: kw1166
+Node: della-l08g2
+Start time: Tue Jan 30 21:28:09 EST 2024
+scripts/tfsenc_main.py --project-id podcast --pkl-identifier full --datum-emb-fn --sid 777 --conversation-id 0 --electrodes 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 48 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 65 66 67 68 69 70 71 72 73 74 75 76 77 78 79 80 81 82 83 84 85 86 87 88 89 90 91 92 93 94 95 96 97 98 99 100 101 102 103 104 105 106 107 108 109 110 111 112 113 114 115 --emb-type opt-30b-q --context-length 2048 --align-with --window-size 200 --word-value all --npermutations 1000 --lags -2000 -1975 -1950 -1925 -1900 -1875 -1850 -1825 -1800 -1775 -1750 -1725 -1700 -1675 -1650 -1625 -1600 -1575 -1550 -1525 -1500 -1475 -1450 -1425 -1400 -1375 -1350 -1325 -1300 -1275 -1250 -1225 -1200 -1175 -1150 -1125 -1100 -1075 -1050 -1025 -1000 -975 -950 -925 -900 -875 -850 -825 -800 -775 -750 -725 -700 -675 -650 -625 -600 -575 -550 -525 -500 -475 -450 -425 -400 -375 -350 -325 -300 -275 -250 -225 -200 -175 -150 -125 -100 -75 -50 -25 0 25 50 75 100 125 150 175 200 225 250 275 300 325 350 375 400 425 450 475 500 525 550 575 600 625 650 675 700 725 750 775 800 825 850 875 900 925 950 975 1000 1025 1050 1075 1100 1125 1150 1175 1200 1225 1250 1275 1300 1325 1350 1375 1400 1425 1450 1475 1500 1525 1550 1575 1600 1625 1650 1675 1700 1725 1750 1775 1800 1825 1850 1875 1900 1925 1950 1975 2000 --min-word-freq 0 --pca-to 50 --layer-idx 00 --datum-mod lag2k-25-all --emb-mod shift-emb --model-mod ridge --sig-elec-file podcast_160.csv --normalize l2 --output-parent-dir kw-podcast-full-777-opt-30b-q-lag2k-25-all-shift-emb-2048-00 --output-prefix kw-200ms-all
+Start Time: Tuesday 01/30/2024 21:29:38
+Loading /scratch/gpfs/kw1166/247-encoding/data/podcast/777/pickles/777_full_stitch_index.pkl
+Loading /scratch/gpfs/kw1166/247-encoding/data/podcast/777/pickles/embeddings/opt-30b-q/full/cnxt_2048/layer_00.pkl
+Loading /scratch/gpfs/kw1166/247-encoding/data/podcast/777/pickles/embeddings/opt-30b-q/full/base_df.pkl
+After loading: Datum loads with 6153 words
+shift-emb 1 * 1 steps 
+Shifting resulted in 1 less words
+After processing: Datum now has 5473 words
+Trimming resulted in 5368 (98.08149%) words
+After filtering: Datum now has 5368 words
+Averaging embeddings across tokens
+Normalize Embeddings
+Datum final length: 5024
+Loading /scratch/gpfs/kw1166/247-encoding/data/podcast/777/pickles/777_electrode_names.pkl
+Previously ran the same job, checking for elecs done
+Running all electrodes
+Using kfolds
+777 662_EEGPO_02REF Prod: 0 Comp: 5024
+No PCA, do ridge, emb_dim = 7168
+Traceback (most recent call last):
+  File "/home/kw1166/.conda/envs/247-main/lib/python3.10/site-packages/himalaya/backend/_utils.py", line 120, in with_error_message
+    return func(*args, **kwargs)
+torch._C._LinAlgError: linalg.eigh: The algorithm failed to converge because the input matrix is ill-conditioned or has too many repeated eigenvalues (error code: 24).
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/scratch/gpfs/kw1166/247-encoding/scripts/tfsenc_main.py", line 319, in <module>
+    main()
+  File "/scratch/gpfs/kw1166/247-encoding/scripts/utils.py", line 12, in function_wrapper
+    func()
+  File "/scratch/gpfs/kw1166/247-encoding/scripts/tfsenc_main.py", line 313, in main
+    parallel_encoding(args, electrode_info, datum, stitch_index, parallel)
+  File "/scratch/gpfs/kw1166/247-encoding/scripts/tfsenc_main.py", line 254, in parallel_encoding
+    single_electrode_encoding(electrode, args, datum, stitch_index)
+  File "/scratch/gpfs/kw1166/247-encoding/scripts/tfsenc_main.py", line 207, in single_electrode_encoding
+    run_regression(args, *comp_train, *comp_test, elec_name, "comp")
+  File "/scratch/gpfs/kw1166/247-encoding/scripts/tfsenc_utils.py", line 328, in run_regression
+    encoding_cv_ridge(
+  File "/scratch/gpfs/kw1166/247-encoding/scripts/tfsenc_utils.py", line 180, in encoding_cv_ridge
+    model.fit(Xtraf, Ytraf)
+  File "/home/kw1166/.conda/envs/247-main/lib/python3.10/site-packages/sklearn/pipeline.py", line 382, in fit
+    self._final_estimator.fit(Xt, y, **fit_params_last_step)
+  File "/home/kw1166/.conda/envs/247-main/lib/python3.10/site-packages/himalaya/backend/_utils.py", line 97, in wrapper
+    return func(*args, **kwargs)
+  File "/home/kw1166/.conda/envs/247-main/lib/python3.10/site-packages/himalaya/kernel_ridge/_sklearn_api.py", line 517, in fit
+    tmp = self._call_solver(K=K, Y=y, cv=cv, alphas=alphas,
+  File "/home/kw1166/.conda/envs/247-main/lib/python3.10/site-packages/himalaya/kernel_ridge/_sklearn_api.py", line 59, in _call_solver
+    return function(**direct_params, **solver_params)
+  File "/home/kw1166/.conda/envs/247-main/lib/python3.10/site-packages/himalaya/kernel_ridge/_random_search.py", line 659, in solve_kernel_ridge_cv_eigenvalues
+    tmp = solve_multiple_kernel_ridge_random_search(K[None], Y,
+  File "/home/kw1166/.conda/envs/247-main/lib/python3.10/site-packages/himalaya/kernel_ridge/_random_search.py", line 228, in solve_multiple_kernel_ridge_random_search
+    for matrix, alpha_batch in _decompose_kernel_ridge(
+  File "/home/kw1166/.conda/envs/247-main/lib/python3.10/site-packages/himalaya/kernel_ridge/_random_search.py", line 541, in _decompose_kernel_ridge
+    eigenvalues, V = backend.eigh(Ktrain)
+  File "/home/kw1166/.conda/envs/247-main/lib/python3.10/site-packages/himalaya/backend/_utils.py", line 122, in with_error_message
+    raise RuntimeError(
+RuntimeError: The eigenvalues decomposition failed on backend torch. You may try using `diagonalize_method='svd'`, or `solver_params={'diagonalize_method': 'svd'}` if called through the class API.
+Original error:
+_LinAlgError: linalg.eigh: The algorithm failed to converge because the input matrix is ill-conditioned or has too many repeated eigenvalues (error code: 24).
+End time: Tue Jan 30 21:30:30 EST 2024
