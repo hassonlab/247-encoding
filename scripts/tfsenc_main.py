@@ -48,6 +48,9 @@ def skip_elecs_done(args, electrode_info):
         for file in glob.glob(os.path.join(args.full_output_dir, "*_*.csv"))
     ]
     elecs_done = [
+        elec.replace("_aggregate", "").replace("_control", "") for elec in elecs_done
+    ]
+    elecs_done = [
         elec.replace("_fold", "").replace("prod", "comp").replace("_comp.csv", "")
         for elec in elecs_done
     ]
@@ -55,7 +58,7 @@ def skip_elecs_done(args, electrode_info):
 
     elecs_num = len(electrode_info)
     for elec, count in elecs_counts.most_common():
-        if count == 2:
+        if count >= 2:
             print(f"Skipping elec {elec}")
             sid_string = elec[: elec.find("_")]
             if sid_string.isdigit():  # actually a sid
@@ -201,11 +204,9 @@ def single_electrode_encoding(electrode, args, datum, stitch_index):
         prod_test, comp_test = prod_train, comp_train
 
     if len(prod_train[0]) > 0 and len(prod_test[0]) > 0:
-        prod_results = run_regression(args, *prod_train, *prod_test)
-        write_encoding_results(args, prod_results, elec_name, "prod")
+        run_regression(args, *prod_train, *prod_test, elec_name, "prod")
     if len(comp_train[0]) > 0 and len(comp_test[0]) > 0:
-        comp_results = run_regression(args, *comp_train, *comp_test)
-        write_encoding_results(args, comp_results, elec_name, "comp")
+        run_regression(args, *comp_train, *comp_test, elec_name, "comp")
     return (sid, elec_name, len(prod_X), len(comp_X))
 
 
@@ -222,18 +223,17 @@ def parallel_encoding(args, electrode_info, datum, stitch_index, parallel=True):
     Returns:
         None
     """
+    # Skipping elecs already done
+    if os.path.exists(args.full_output_dir):  # previous job
+        print("Previously ran the same job, checking for elecs done")
+        electrode_info = skip_elecs_done(args, electrode_info)
 
     # if args.emb_type == "gpt2-xl" and args.sid == 676:
     #     parallel = False
     if parallel:
-        print("Running all electrodes in parallel")
         summary_file = os.path.join(args.full_output_dir, "summary.csv")  # summary file
+        print("Running all electrodes in parallel")
         p = Pool(4)  # multiprocessing
-
-        # Skipping elecs already done
-        if os.path.exists(summary_file):  # previous job
-            print("Previously ran the same job, checking for elecs done")
-            electrode_info = skip_elecs_done(args, electrode_info)
 
         with open(summary_file, "w") as f:
             writer = csv.writer(f, delimiter=",", lineterminator="\r\n")
@@ -273,7 +273,10 @@ def main():
 
     # Processing significant electrodes or individual subjects
     electrode_info = process_subjects(args)
-    parallel_encoding(args, electrode_info, datum, stitch_index)
+    parallel = False
+    if not args.model_mod:  # HACK to do parallel for linear reg
+        parallel = True
+    parallel_encoding(args, electrode_info, datum, stitch_index, parallel)
 
     return
 

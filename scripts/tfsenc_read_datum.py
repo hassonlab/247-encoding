@@ -556,19 +556,37 @@ def read_datum(args, stitch):
     #     df = pd.concat([base_df, emb_df], axis=1)
 
     print("Creating dataframe for Rephael")
-    df = pd.DataFrame.from_dict(load_pickle("data/podcast/777/pickles/777_full_labels.pkl")["labels"])
+    df = pd.DataFrame.from_dict(
+        load_pickle("data/podcast/777/pickles/777_full_labels.pkl")["labels"]
+    )
     df["adjusted_onset"] = df.onset
     df["adjusted_offset"] = df.offset
-    
-    base_df = pd.read_csv("data/podcast/888/timed-transcript.csv",header=None)
-    base_df.columns = ["word","onset","offset","accuracy","speaker","is_nonword"]
+
+    base_df = pd.read_csv("data/podcast/888/timed-transcript.csv", header=None)
+    base_df.columns = ["word", "onset", "offset", "accuracy", "speaker", "is_nonword"]
     if "rephael1" in args.emb_mod:
-        embs = load_pickle("data/podcast/888/podcast_rephael.pkl")["increment_sum_ws_32"]
+        embs = load_pickle("data/podcast/888/podcast_rephael.pkl")[
+            "increment_sum_ws_32"
+        ]
     elif "rephael2" in args.emb_mod:
         embs = load_pickle("data/podcast/888/podcast_rephael.pkl")["ws_32"]
-    breakpoint()
+
     base_df["embeddings"] = embs.tolist()
-    df = df.merge(base_df.loc[:,("word","onset","embeddings")],how="inner",on=["word","onset"])
+
+    if "concat-2l" in args.datum_mod:
+        embs2 = load_pickle("data/podcast/888/podcast_rephael.pkl")["ws_32"]
+        base_df["embeddings2"] = embs2.tolist()
+
+        def concat(x):
+            return np.concatenate((x["embeddings"], x["embeddings2"]))
+
+        base_df["embeddings"] = base_df.apply(concat, axis=1)
+
+    df = df.merge(
+        base_df.loc[:, ("word", "onset", "embeddings")],
+        how="inner",
+        on=["word", "onset"],
+    )
 
     print(f"After loading: Datum loads with {len(df)} words")
     df = process_conversations(args, df, stitch)

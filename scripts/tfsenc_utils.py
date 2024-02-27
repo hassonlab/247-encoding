@@ -7,6 +7,7 @@ from multiprocessing import Pool
 import mat73
 import numpy as np
 import pandas as pd
+import torch
 from numba import jit, prange
 from scipy import stats
 from sklearn.preprocessing import StandardScaler
@@ -14,6 +15,19 @@ from sklearn.decomposition import PCA
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import GroupKFold, KFold
 from sklearn.pipeline import make_pipeline
+from himalaya.ridge import (
+    RidgeCV,
+    GroupRidgeCV,
+    ColumnTransformerNoStack,
+)
+from himalaya.kernel_ridge import (
+    KernelRidge,
+    KernelRidgeCV,
+    MultipleKernelRidgeCV,
+    ColumnKernelizer,
+    Kernelizer,
+)
+from himalaya.scoring import correlation_score, correlation_score_split
 
 
 def encColCorr(CA, CB):
@@ -44,6 +58,103 @@ def encColCorr(CA, CB):
         r = float(r)
 
     return r, p, t
+
+
+def encoding_cv_ridge(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, elec, mode):
+    print(f"No PCA, do ridge, emb_dim = {Xtes.shape[1]}")
+
+    ##### ENCODING #####
+    nSamps = Xtes.shape[0]
+    nChans = Ytra.shape[1] if Ytra.shape[1:] else 1
+
+    if "concat-2l" in args.datum_mod:
+        feat_spaces = ["aggregate", "control"]
+    else:
+        feat_spaces = ["all"]
+
+    YHAT = np.zeros((len(feat_spaces), nSamps, nChans))
+    Ynew = np.zeros((nSamps, nChans))
+
+    for i in range(0, args.fold_num):
+        Xtraf, Xtesf = Xtra[fold_tra != i], Xtes[fold_tes == i]
+        Ytraf, Ytesf = Ytra[fold_tra != i], Ytes[fold_tes == i]
+
+        Ytesf -= np.mean(Ytraf, axis=0)
+        Ytraf -= np.mean(Ytraf, axis=0)
+
+        # Fit model
+        alphas = np.logspace(0, 20, 10)
+        Xtraf = Xtraf.astype("float32")
+        Ytraf = Ytraf.astype("float32")
+        Xtesf = Xtesf.astype("float32")
+        Ytesf = Ytesf.astype("float32")
+        if "bridge" in args.model_mod:  # Banded Ridge
+            column_pipeline = make_pipeline(
+                StandardScaler(with_mean=True, with_std=True),
+                Kernelizer(kernel="linear"),
+            )
+            if "concat-2l" in args.datum_mod:
+                ck = ColumnKernelizer(
+                    [
+                        ("aggregate", column_pipeline, slice(0, 6144)),
+                        ("control", column_pipeline, slice(6144, 12288)),
+                    ]
+                )
+            solver = "random_search"
+            n_iter = 20
+            alphas = np.logspace(0, 20, 10)
+            solver_params = dict(n_iter=n_iter, alphas=alphas)
+            model = make_pipeline(
+                ck,
+                MultipleKernelRidgeCV(
+                    kernels="precomputed",
+                    solver=solver,
+                    solver_params=solver_params,
+                ),
+            )
+        elif Xtra.shape[0] < Xtra.shape[1]:  # Kernel Ridge
+            model = make_pipeline(StandardScaler(), KernelRidgeCV(alphas=alphas))
+        else:  # Ridge
+            model = make_pipeline(StandardScaler(), RidgeCV(alphas=alphas))
+        model.fit(Xtraf, Ytraf)
+
+        if len(feat_spaces) > 1:  # banded ridge model
+            foldYhat_split = model.predict(Xtesf, split=True)
+            YHAT[:, fold_tes == i, :] = foldYhat_split.cpu().numpy()
+        else:  # one model
+            foldYhat = model.predict(Xtesf)
+            YHAT[0, fold_tes == i, :] = foldYhat.cpu().numpy().reshape(-1, nChans)
+        Ynew[fold_tes == i, :] = Ytesf.reshape(-1, nChans)
+
+    ##### CORRELATION #####
+    Ynew = Ynew.astype("float32")
+    YHAT = YHAT.astype("float32")
+    if len(feat_spaces) > 1:
+        cor_res = correlation_score_split(Ynew, YHAT[0:, :, :])
+    else:
+        cor_res = correlation_score(Ynew, YHAT[0, :, :])
+
+    ##### WRITING #####
+    trial_str = append_jobid_to_string(args, mode)
+    filename = os.path.join(args.full_output_dir, f"{elec}{trial_str}.csv")
+
+    if len(feat_spaces) > 1:  # banded ridge
+        for feat_idx, feat_space in enumerate(feat_spaces):
+            filename_feat = os.path.join(
+                args.full_output_dir, f"{elec}{trial_str}_{feat_space}.csv"
+            )
+            with open(filename_feat, "w") as csvfile:
+                print(f"writing file {feat_space}")
+                csvwriter = csv.writer(csvfile)
+                csvwriter.writerow(cor_res[feat_idx, :].tolist())
+        cor_res = torch.sum(cor_res, axis=0)
+
+    with open(filename, "w") as csvfile:
+        print("writing file")
+        csvwriter = csv.writer(csvfile)
+        csvwriter.writerow(cor_res.tolist())
+
+    return
 
 
 def cv_lm_003_prod_comp(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag):
@@ -86,9 +197,7 @@ def cv_lm_003_prod_comp(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag):
         if lag != -1:
             B = model.named_steps["linearregression"].coef_
             assert lag < B.shape[0], f"Lag index out of range"
-            B = np.repeat(
-                B[lag, :][np.newaxis, :], B.shape[0], 0
-            )  # best-lag model
+            B = np.repeat(B[lag, :][np.newaxis, :], B.shape[0], 0)  # best-lag model
             model.named_steps["linearregression"].coef_ = B
 
         # Predict
@@ -101,9 +210,7 @@ def cv_lm_003_prod_comp(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag):
 
 
 @jit(nopython=True)
-def build_Y(
-    onsets, convo_onsets, convo_offsets, brain_signal, lags, window_size
-):
+def build_Y(onsets, convo_onsets, convo_offsets, brain_signal, lags, window_size):
     """[summary]
 
     Args:
@@ -179,9 +286,7 @@ def build_XY(args, datum, brain_signal):
     return X, Y
 
 
-def encoding_mp_prod_comp(
-    args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag
-):
+def encoding_mp_prod_comp(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag):
     if args.shuffle:
         np.random.shuffle(Ytra)
         np.random.shuffle(Ytes)
@@ -204,8 +309,20 @@ def encoding_mp_prod_comp(
     return rps
 
 
-def run_regression(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes):
+def run_regression(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, elec_name, mode):
     perm_prod = []
+
+    # RIDGE
+    if args.model_mod and "ridge" in args.model_mod:
+        # FIXME Note from Ken:
+        # Cleander code. Includes encoding and writing to results
+        # still need to set up per fold correlation and best lag model
+        encoding_cv_ridge(
+            args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, elec_name, mode
+        )
+        return
+
+    # PCA
     for i in range(args.npermutations):
         result = encoding_mp_prod_comp(
             args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, -1
@@ -220,16 +337,14 @@ def run_regression(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes):
             )
         else:
             perm_prod.append(result)
-
-    return perm_prod
+    write_encoding_results(args, perm_prod, elec_name, mode)
+    return
 
 
 def get_groupkfolds(datum, X, Y, fold_num=10):
     fold_cat = np.zeros(datum.shape[0])
     grpkfold = GroupKFold(n_splits=fold_num)
-    folds = [
-        t[1] for t in grpkfold.split(X, Y, groups=datum["conversation_id"])
-    ]
+    folds = [t[1] for t in grpkfold.split(X, Y, groups=datum["conversation_id"])]
 
     for i in range(0, len(folds)):
         for row in folds[i]:
@@ -241,7 +356,7 @@ def get_groupkfolds(datum, X, Y, fold_num=10):
     return (fold_cat_prod, fold_cat_comp)
 
 
-def get_kfolds(X, fold_num=10):
+def get_kfolds(X, fold_num=5):
     print("Using kfolds")
     skf = KFold(n_splits=fold_num, shuffle=False)
     folds = [t[1] for t in skf.split(np.arange(X.shape[0]))]
@@ -265,14 +380,12 @@ def write_encoding_results(args, cor_results, elec_name, mode):
         None
     """
     trial_str = append_jobid_to_string(args, mode)
-    filename = os.path.join(
-        args.full_output_dir, elec_name + trial_str + ".csv"
-    )
+    filename = os.path.join(args.full_output_dir, elec_name + trial_str + ".csv")
     fold_filename = os.path.join(
         args.full_output_dir, elec_name + trial_str + "_fold.csv"
     )
 
-    if len(cor_results) == 1: # no permutations
+    if len(cor_results) == 1:  # no permutations
         cor_results = cor_results[0]
 
     # correlation for whole datum
@@ -285,8 +398,8 @@ def write_encoding_results(args, cor_results, elec_name, mode):
     # correlation per fold
     cor_folds = cor_results[1:]
     df = pd.DataFrame(cor_folds)
-    df.loc[len(df),:] = df.mean(axis=0)
-    df.loc[len(df),:] = df.sem(axis=0,ddof=0)
+    df.loc[len(df), :] = df.mean(axis=0)
+    df.loc[len(df), :] = df.sem(axis=0, ddof=0)
     # FIXME I really don't like mean and sem here, maybe we do it in plotting instead?
     df.to_csv(fold_filename, index=False)
 

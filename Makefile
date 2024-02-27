@@ -152,7 +152,7 @@ NM := l2
 
 EM := shift-emb
 EM := glove50
-EM := rephael2
+EM := rephael1
 
 
 ############## Datum Modifications ##############
@@ -187,7 +187,7 @@ actually predicted by gpt2} (only used for glove embeddings)
 
 DM := lag2k-25-incorrect
 DM := lag10k-25-all
-DM := lag2k-25-all
+DM := lag2k-25-all-concat-2l
 
 
 ############## Model Modification ##############
@@ -197,12 +197,13 @@ DM := lag2k-25-all
 MM := best-lag
 MM := pc-flip-best-lag
 MM := 
+MM := bridge
 
 # Choose the command to run: python runs locally, echo is for debugging, sbatch
 # is for running on SLURM all lags in parallel.
 CMD := echo
-CMD := sbatch submit1.sh
 CMD := python
+CMD := sbatch submit1.sh
 # {echo | python | sbatch submit1.sh}
 
 #TODO: move paths to makefile

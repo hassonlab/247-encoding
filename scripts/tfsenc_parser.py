@@ -108,7 +108,7 @@ def parse_arguments():
     if not (args.shuffle or args.phase_shuffle):
         args.npermutations = 1
 
-    if args.sig_elec_file and args.sid not in [625, 676]:  # NOTE hardcoded
+    if args.sig_elec_file and args.sid not in [625, 676, 7170, 798]:  # NOTE hardcoded
         args.sid = 777
 
     if not args.bad_convos:
