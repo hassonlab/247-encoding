@@ -136,6 +136,7 @@ def single_electrode_encoding(electrode, args, datum, stitch_index):
     if elec_name is None:
         print(f"Electrode ID {elec_id} does not exist")
         return (args.sid, None, 0, 0)
+    elec_name = str(sid) + "_" + elec_name
 
     # Load signal Data
     elec_signal, missing_convos = load_electrode_data(
@@ -175,7 +176,6 @@ def single_electrode_encoding(electrode, args, datum, stitch_index):
         fold_cat_prod = get_kfolds(prod_X, args.fold_num)
         fold_cat_comp = get_kfolds(comp_X, args.fold_num)
 
-    elec_name = str(sid) + "_" + elec_name
     print(f"{args.sid} {elec_name} Prod: {len(prod_X)} Comp: {len(comp_X)}")
 
     # Run regression and save correlation results
@@ -209,18 +209,15 @@ def parallel_encoding(args, electrode_info, datum, stitch_index, parallel=True):
     Returns:
         None
     """
+    # Skipping elecs already done
+    if os.path.exists(args.full_output_dir):  # previous job
+        print("Previously ran the same job, checking for elecs done")
+        electrode_info = skip_elecs_done(args, electrode_info)
 
-    # if args.emb_type == "gpt2-xl" and args.sid == 676:
-    #     parallel = False
     if parallel:
         print("Running all electrodes in parallel")
         summary_file = os.path.join(args.full_output_dir, "summary.csv")  # summary file
-        p = Pool(processes=get_cpu_count())  # multiprocessing
-
-        # Skipping elecs already done
-        if os.path.exists(args.full_output_dir):  # previous job
-            print("Previously ran the same job, checking for elecs done")
-            electrode_info = skip_elecs_done(args, electrode_info)
+        p = Pool(4)  # multiprocessing
 
         with open(summary_file, "w") as f:
             writer = csv.writer(f, delimiter=",", lineterminator="\r\n")
@@ -260,7 +257,10 @@ def main():
 
     # Processing significant electrodes or individual subjects
     electrode_info = process_subjects(args)
-    parallel_encoding(args, electrode_info, datum, stitch_index)
+    parallel = False
+    if not args.model_mod:  # HACK to do parallel for linear reg
+        parallel = False
+    parallel_encoding(args, electrode_info, datum, stitch_index, parallel)
 
     return
 

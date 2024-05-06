@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import normalize
 from utils import load_pickle, save_pickle
+from sklearn.decomposition import PCA
 
 import gensim.downloader as api
 
@@ -356,34 +357,6 @@ def load_glove_embeddings(args):
     return glove_df
 
 
-def load_glove_embeddings(args):
-    glove_base_df_path = os.path.join(
-        args.PICKLE_DIR, "embeddings", "glove50", "full", "base_df.pkl"
-    )
-    glove_emb_df_path = os.path.join(
-        args.PICKLE_DIR,
-        "embeddings",
-        "glove50",
-        "full",
-        "cnxt_0001",
-        "layer_01.pkl",
-    )
-
-    glove_base_df = load_datum(glove_base_df_path)
-    glove_emb_df = load_datum(glove_emb_df_path)
-    if len(glove_base_df) != len(glove_emb_df):  # HACK
-        glove_df = pd.merge(
-            glove_base_df, glove_emb_df, left_index=True, right_index=True
-        )
-    else:
-        glove_base_df.reset_index(drop=False, inplace=True)
-        glove_df = pd.concat([glove_base_df, glove_emb_df], axis=1)
-    glove_df = glove_df[glove_df[f"in_{args.emb_type}"]]
-    glove_df = glove_df.loc[:, ["adjusted_onset", "word", "embeddings"]]
-
-    return glove_df
-
-
 def load_glove_embeddings2(args):
     glove_base_df_path = os.path.join(
         args.PICKLE_DIR, "embeddings", "glove50", "full", "base_df.pkl"
@@ -574,8 +547,6 @@ def mod_datum_by_preds(args, datum):
     """
 
     print(f"Using {args.emb_type} predictions")
-
-    # modify datum based on correct or incorrect predictions
     if "incorrect" in args.datum_mod:  # select words predicted incorrectly
         rank, _ = mod_datum_arg_parse(args.datum_mod, "incorrect", "5")
         datum = datum[datum.true_pred_rank > rank]  # incorrect
@@ -716,6 +687,21 @@ def mod_datum(args, datum):
     return datum
 
 
+def run_pca(args, df):
+    pca_to = args.pca_to
+    pca = PCA(n_components=pca_to, svd_solver="auto", whiten=True)
+
+    df_emb = df["embeddings"]
+    embs = np.vstack(df_emb.values)
+    print(f"PCA from {embs.shape[1]} to {pca_to}")
+    pca_output = pca.fit_transform(embs)
+    print(f"PCA explained variance: {sum(pca.explained_variance_)}")
+    print(f"PCA explained variance ratio: {sum(pca.explained_variance_ratio_)}")
+    df["embeddings"] = pca_output.tolist()
+
+    return df
+
+
 def read_datum(args, stitch):
     """Load, process, and filter datum
 
@@ -726,8 +712,37 @@ def read_datum(args, stitch):
     Returns:
         DataFrame: processed and filtered datum
     """
-    emb_df = load_datum(args.emb_df_path)
     base_df = load_datum(args.base_df_path)
+    emb_df = load_datum(args.emb_df_path)
+    if args.project_id == "podcast":
+        import matplotlib.pyplot as plt
+
+        df = emb_df[emb_df.true_pred_rank <= 2000]
+        bins = np.arange(0, 2001, 5)
+        df["binned"] = pd.cut(df.true_pred_rank, bins=bins)
+        df["bin_num"] = df.binned.apply(lambda x: x.left).astype(int)
+        fig, ax = plt.subplots()
+        ax.hist(df.bin_num, bins=400)
+        ax.set_yscale("log")
+        plt.savefig("results.jpeg")
+        breakpoint()
+
+    if args.sid == 7170:
+        len1 = len(base_df[base_df.conversation_id <= 20])
+        len2 = len(base_df[base_df.conversation_id == 24])
+        len3 = len(base_df[base_df.conversation_id == 21])
+        newdf = pd.DataFrame(np.repeat(emb_df.loc[[0], :].values, len3, axis=0))
+        newdf.columns = emb_df.columns
+        emb_df = pd.concat((emb_df[0:len1], newdf, emb_df[len1 + len2 :]))
+        emb_df.reset_index(drop=True, inplace=True)
+    if args.sid == 798:
+        len1 = len(base_df[base_df.conversation_id <= 5])
+        len2 = len(base_df[base_df.conversation_id == 15])
+        len3 = len(base_df[base_df.conversation_id == 6])
+        newdf = pd.DataFrame(np.repeat(emb_df.loc[[0], :].values, len3, axis=0))
+        newdf.columns = emb_df.columns
+        emb_df = pd.concat((emb_df[0:len1], newdf, emb_df[len1 + len2 :]))
+        emb_df.reset_index(drop=True, inplace=True)
 
     if len(emb_df) != len(base_df):
         df = pd.merge(
@@ -747,5 +762,9 @@ def read_datum(args, stitch):
 
     df = mod_datum(args, df)  # further filter datum based on datum_mod argument
     print(f"Datum final length: {len(df)}")
+
+    if "earlypca" in args.datum_mod:  # pca
+        print(f"Running early pca due to big embedding dimension")
+        df = run_pca(args, df)
 
     return df

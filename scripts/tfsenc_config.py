@@ -1,4 +1,5 @@
 import os
+from himalaya.backend import set_backend
 
 
 def create_output_directory(args):
@@ -77,5 +78,8 @@ def setup_environ(args):
     args.full_output_dir = create_output_directory(args)
 
     args.best_lag = -1
+
+    if args.model_mod and "ridge" in args.model_mod:
+        backend = set_backend("torch_cuda", on_error="warn")  # HACK
 
     return args
