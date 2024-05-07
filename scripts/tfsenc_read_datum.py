@@ -714,35 +714,6 @@ def read_datum(args, stitch):
     """
     base_df = load_datum(args.base_df_path)
     emb_df = load_datum(args.emb_df_path)
-    if args.project_id == "podcast":
-        import matplotlib.pyplot as plt
-
-        df = emb_df[emb_df.true_pred_rank <= 2000]
-        bins = np.arange(0, 2001, 5)
-        df["binned"] = pd.cut(df.true_pred_rank, bins=bins)
-        df["bin_num"] = df.binned.apply(lambda x: x.left).astype(int)
-        fig, ax = plt.subplots()
-        ax.hist(df.bin_num, bins=400)
-        ax.set_yscale("log")
-        plt.savefig("results.jpeg")
-        breakpoint()
-
-    if args.sid == 7170:
-        len1 = len(base_df[base_df.conversation_id <= 20])
-        len2 = len(base_df[base_df.conversation_id == 24])
-        len3 = len(base_df[base_df.conversation_id == 21])
-        newdf = pd.DataFrame(np.repeat(emb_df.loc[[0], :].values, len3, axis=0))
-        newdf.columns = emb_df.columns
-        emb_df = pd.concat((emb_df[0:len1], newdf, emb_df[len1 + len2 :]))
-        emb_df.reset_index(drop=True, inplace=True)
-    if args.sid == 798:
-        len1 = len(base_df[base_df.conversation_id <= 5])
-        len2 = len(base_df[base_df.conversation_id == 15])
-        len3 = len(base_df[base_df.conversation_id == 6])
-        newdf = pd.DataFrame(np.repeat(emb_df.loc[[0], :].values, len3, axis=0))
-        newdf.columns = emb_df.columns
-        emb_df = pd.concat((emb_df[0:len1], newdf, emb_df[len1 + len2 :]))
-        emb_df.reset_index(drop=True, inplace=True)
 
     if len(emb_df) != len(base_df):
         df = pd.merge(
