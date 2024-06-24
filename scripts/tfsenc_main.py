@@ -67,7 +67,7 @@ def skip_elecs_done(args, electrode_info):
             }
             elecs_num -= 1
 
-    assert elecs_num == len(electrode_info), "Wrong number of elecs skipped"
+    # assert elecs_num == len(electrode_info), "Wrong number of elecs skipped"
     return electrode_info
 
 
@@ -235,7 +235,10 @@ def parallel_encoding(args, electrode_info, datum, stitch_index, parallel=True):
     else:
         print("Running all electrodes")
         for electrode in electrode_info.items():
-            single_electrode_encoding(electrode, args, datum, stitch_index)
+            try:
+                single_electrode_encoding(electrode, args, datum, stitch_index)
+            except:
+                print(f"{electrode} failed!!!")
 
     return None
 

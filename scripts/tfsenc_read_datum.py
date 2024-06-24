@@ -1,15 +1,25 @@
 import os
 import string
 
+import torch
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import normalize
 from utils import load_pickle, save_pickle
 from sklearn.decomposition import PCA
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 import gensim.downloader as api
 
 # import re
+
+import nltk
+
+
+def get_pos(df):
+    words_orig, part_of_speech = zip(*nltk.pos_tag(df.word, tagset="universal"))
+    df = df.assign(part_of_speech=part_of_speech)
+    return df
 
 
 def get_vector(x, glove):
@@ -269,6 +279,40 @@ def ave_emb(datum):
     return datum
 
 
+def ave_emb_preds(datum):
+    print("Averaging embeddings and preds across tokens")
+
+    # calculate mean embeddings
+    def mean_emb(embs):
+        return np.array(embs.values.tolist()).mean(axis=0).tolist()
+
+    mean_embs = datum.groupby(["adjusted_onset", "word"], sort=False)[
+        "embeddings"
+    ].apply(lambda x: mean_emb(x))
+    mean_embs = pd.DataFrame(mean_embs)
+    mean_preds = datum.groupby(["adjusted_onset", "word"], sort=False)[
+        "true_pred_prob"
+    ].apply(lambda x: mean_emb(x))
+    mean_preds = pd.DataFrame(mean_preds)
+
+    # replace embeddings
+    idx = (
+        datum.groupby(["adjusted_onset", "word"], sort=False)["token_idx"].transform(
+            min
+        )
+        == datum["token_idx"]
+    )
+    datum = datum[idx]
+    mean_embs.set_index(datum.index, inplace=True)
+    mean_preds.set_index(datum.index, inplace=True)
+    datum2 = datum.copy()  # setting copy to avoid warning
+    datum2.loc[:, "embeddings"] = mean_embs.embeddings
+    datum2.loc[:, "true_pred_prob"] = mean_preds.true_pred_prob
+    datum = datum2  # reassign back to datum
+
+    return datum
+
+
 def ave_pred(datum):
     print("Averaging predictions across tokens")
 
@@ -344,14 +388,14 @@ def load_glove_embeddings(args):
 
     glove_base_df = load_datum(glove_base_df_path)
     glove_emb_df = load_datum(glove_emb_df_path)
-    if len(glove_base_df) != len(glove_emb_df):  # HACK
+    if len(glove_base_df) != len(glove_emb_df):  # HACK old
         glove_df = pd.merge(
             glove_base_df, glove_emb_df, left_index=True, right_index=True
         )
     else:
         glove_base_df.reset_index(drop=False, inplace=True)
         glove_df = pd.concat([glove_base_df, glove_emb_df], axis=1)
-    glove_df = glove_df[glove_df[f"in_{args.emb_type}"]]
+    glove_df = glove_df[glove_df[f"in_{args.emb_type}"]]  # HACK 2 turn of this line
     glove_df = glove_df.loc[:, ["adjusted_onset", "word", "embeddings"]]
 
     return glove_df
@@ -372,7 +416,7 @@ def load_glove_embeddings2(args):
 
     glove_base_df = load_datum(glove_base_df_path)
     glove_emb_df = load_datum(glove_emb_df_path)
-    if len(glove_base_df) != len(glove_emb_df):  # HACK
+    if len(glove_base_df) != len(glove_emb_df):  # HACK old
         glove_df = pd.merge(
             glove_base_df, glove_emb_df, left_index=True, right_index=True
         )
@@ -428,6 +472,7 @@ def process_embeddings(args, df):
         glove_df = glove_df[glove_df.adjusted_onset.notna()]
         df = df.merge(glove_df, how="inner", on=["adjusted_onset", "word"])
     elif "glove50" in args.emb_mod:
+        # HACK 2: turn the following two lines off
         mask = df[f"in_glove50"] & df[f"{args.emb_type}_token_is_root"]
         df = df[mask]
         df.drop(
@@ -437,6 +482,61 @@ def process_embeddings(args, df):
         df = df[df.adjusted_onset.notna()]
         glove_df = glove_df[glove_df.adjusted_onset.notna()]
         df = df.merge(glove_df, how="inner", on=["adjusted_onset", "word"])
+    # elif "llama3" in args.emb_mod:
+    #     mask = df[f"in_glove50"] & df[f"{args.emb_type}_token_is_root"]
+    #     df = df[mask]
+    #     df.drop(
+    #         ["embeddings"], axis=1, errors="ignore", inplace=True
+    #     )  # delete current embeddings
+
+    #     tokenizer = AutoTokenizer.from_pretrained(
+    #         "meta-llama/Meta-Llama-3-8B",
+    #         add_prefix_space=True,
+    #         cache_dir=os.path.join(os.path.dirname(os.getcwd()), ".cache"),
+    #         local_files_only=True,
+    #     )
+    #     df["token"] = df.word.apply(tokenizer.tokenize)
+    #     df = df.explode("token", ignore_index=False)
+    #     df["token_id"] = df["token"].apply(tokenizer.convert_tokens_to_ids)
+    #     df["token_idx"] = df.groupby(["adjusted_onset", "word"]).cumcount()
+    #     llama_emb = pd.read_pickle("../247-pickling/llama3_dict.pkl")
+    #     df = df.merge(llama_emb, how="left", on="token_id")
+    #     df = ave_emb(df)
+    elif "-pred" in args.emb_mod:
+        # df.drop(
+        #     ["embeddings"], axis=1, errors="ignore", inplace=True
+        # )  # delete current embeddings
+        if "llama2-pred" in args.emb_mod:
+            hf_model = "meta-llama/Llama-2-7b-hf"
+        elif "llama3-pred" in args.emb_mod:
+            hf_model = "meta-llama/Meta-Llama-3-8B"
+
+        tokenizer = AutoTokenizer.from_pretrained(
+            hf_model,
+            add_prefix_space=True,
+            cache_dir=os.path.join(os.path.dirname(os.getcwd()), ".cache"),
+            local_files_only=True,
+        )
+        model = AutoModelForCausalLM.from_pretrained(
+            hf_model,
+            output_hidden_states=True,
+            cache_dir=os.path.join(os.path.dirname(os.getcwd()), ".cache"),
+            local_files_only=True,
+        )
+
+        def get_pred_token_id(x):
+            try:
+                token_id = tokenizer.convert_tokens_to_ids(x[0])
+                assert token_id is not None
+                assert token_id != 0
+            except:
+                token_id = tokenizer.encode(x[0])[-1]
+            return token_id
+
+        df["pred_id"] = df.topk_pred.apply(lambda x: get_pred_token_id(x))
+
+        tokens = torch.tensor([df.pred_id.tolist()])
+        df["embeddings2"] = model.model.embed_tokens(tokens)[0].tolist()
 
     # Embedding manipulation
     if "shift-emb" in args.emb_mod:  # shift embeddings
@@ -529,6 +629,12 @@ def filter_datum(args, df):
         print(f"Aligning with {model}")
         common = common & df[f"in_{model}"]
 
+    # Only for Prob-improb
+    # common = (
+    #     common & df[f"{args.emb_type}_token_is_root"]
+    # )  # HACK 1, turn off for #HACK 2
+    # common = common & df[f"in_glove50"]
+
     df = df[common]
 
     return df
@@ -545,7 +651,6 @@ def mod_datum_by_preds(args, datum):
     Returns:
         DataFrame: further filtered datum
     """
-
     print(f"Using {args.emb_type} predictions")
     if "incorrect" in args.datum_mod:  # select words predicted incorrectly
         rank, _ = mod_datum_arg_parse(args.datum_mod, "incorrect", "5")
@@ -555,17 +660,66 @@ def mod_datum_by_preds(args, datum):
         rank, _ = mod_datum_arg_parse(args.datum_mod, "correct", "5")
         datum = datum[datum.true_pred_rank <= rank]  # correct
         print(f"Selected {len(datum.index)} top{rank} correct words")
+    elif "cp" in args.datum_mod and "prob" in args.datum_mod:
+        percentile, _ = mod_datum_arg_parse(args.datum_mod, "prob", "30")
+        datum_comp = datum[datum.production == 0]
+        datum_prod = datum[datum.production == 1]
+
+        top_comp = datum_comp.true_pred_prob.quantile(1 - percentile / 100)
+        bot_comp = datum_comp.true_pred_prob.quantile(percentile / 100)
+        top_prod = datum_prod.true_pred_prob.quantile(1 - percentile / 100)
+        bot_prod = datum_prod.true_pred_prob.quantile(percentile / 100)
+
+        datum_top = datum.loc[
+            (
+                ((datum.true_pred_prob >= top_comp) & (datum.production == 0))
+                | ((datum.true_pred_prob >= top_prod) & (datum.production == 1))
+            ),
+            :,
+        ].copy()
+        datum_bot = datum.loc[
+            (
+                ((datum.true_pred_prob <= bot_comp) & (datum.production == 0))
+                | ((datum.true_pred_prob <= bot_prod) & (datum.production == 1))
+            ),
+            :,
+        ].copy()
+        if "cp-prob" in args.datum_mod:
+            datum = datum_top
+            print(f"Selected {len(datum.index)} top pred prob words")
+        elif "cp-improb" in args.datum_mod:
+            datum = datum_bot
+            print(f"Selected {len(datum.index)} bot pred prob words")
+        # elif "cp-aligned-prob" in args.datum_mod:
+        #     datum = datum_top[datum_top.word.isin(datum_bot.word.unique())]
+        #     print(f"Selected {len(datum.index)} top pred prob words")
+        # elif "cp-aligned-improb" in args.datum_mod:
+        #     datum = datum_bot[datum_bot.word.isin(datum_top.word.unique())]
+        #     print(f"Selected {len(datum.index)} bot pred prob words")
+
     elif "prob" in args.datum_mod:  # select low pred_prob words
         percentile, _ = mod_datum_arg_parse(args.datum_mod, "prob", "30")
         top = datum.true_pred_prob.quantile(1 - percentile / 100)
         bot = datum.true_pred_prob.quantile(percentile / 100)
+        datum["word_gap"] = datum.adjusted_onset - datum.adjusted_offset.shift()
         datum_top = datum[datum.true_pred_prob >= top].copy()
         datum_bot = datum[datum.true_pred_prob <= bot].copy()
-        if percentile == 30:  # mid
-            prob_mid = datum.true_pred_prob.quantile(85 / 100)
-            improb_mid = datum.true_pred_prob.quantile(15 / 100)
-            datum_prob_mid = datum_top[datum_top.true_pred_prob <= prob_mid]
-            datum_improb_mid = datum_bot[datum_bot.true_pred_prob >= improb_mid]
+
+        if True:
+            datum.drop(columns="embeddings", inplace=True)
+            datum_top_aligned = datum_top[datum_top.word.isin(datum_bot.word.unique())]
+            datum_bot_aligned = datum_bot[datum_bot.word.isin(datum_top.word.unique())]
+            datum_top.to_pickle(f"{args.sid}_gpt2_32_prob.pkl")
+            datum_bot.to_pickle(f"{args.sid}_gpt2_32_improb.pkl")
+            datum_top_aligned.to_pickle(f"{args.sid}_gpt2_32_prob_a.pkl")
+            datum_bot_aligned.to_pickle(f"{args.sid}_gpt2_32_improb_a.pkl")
+            breakpoint()
+
+        # if percentile == 30:  # mid
+        #     prob_mid = datum.true_pred_prob.quantile(85 / 100)
+        #     improb_mid = datum.true_pred_prob.quantile(15 / 100)
+        #     datum_prob_mid = datum_top[datum_top.true_pred_prob <= prob_mid]
+        #     datum_improb_mid = datum_bot[datum_bot.true_pred_prob >= improb_mid]
         # datum_top["word_num"] = datum_top.groupby(datum_top.word).cumcount() + 1
         # datum_bot["word_num"] = datum_bot.groupby(datum_bot.word).cumcount() + 1
         datum_top["word_num"] = (
@@ -600,12 +754,12 @@ def mod_datum_by_preds(args, datum):
         elif "aligned-prob" in args.datum_mod:  # prob aligned with improb
             datum = datum_top[datum_top.word.isin(datum_bot.word.unique())]
             print(f"Selected {len(datum.index)} top pred prob words")
-        elif "improb-mid" in args.datum_mod:
-            datum = datum_improb_mid
-            print(f"Selected {len(datum.index)} mid pred prob words")
-        elif "prob-mid" in args.datum_mod:
-            datum = datum_prob_mid
-            print(f"Selected {len(datum.index)} mid pred prob words")
+        # elif "improb-mid" in args.datum_mod:
+        #     datum = datum_improb_mid
+        #     print(f"Selected {len(datum.index)} mid pred prob words")
+        # elif "prob-mid" in args.datum_mod:
+        #     datum = datum_prob_mid
+        #     print(f"Selected {len(datum.index)} mid pred prob words")
         elif "improb" in args.datum_mod:  # improb
             datum = datum_bot
             print(f"Selected {len(datum.index)} bot pred prob words")
@@ -657,6 +811,22 @@ def mod_datum(args, datum):
     Returns:
         DataFrame: further filtered datum
     """
+    # Average Embeddings per word
+    if (  # HACK 1 & 2 turn off, moved earlier for prob-improb
+        "glove" not in args.emb_type  # glove emb
+        and "glove50" not in args.align_with  # aligned with glove emb
+        and "glove" not in args.emb_mod  # replaced with glove emb (already aligned)
+    ):
+        if "first" in args.emb_mod:
+            idx = (
+                datum.groupby(["adjusted_onset", "word"], sort=False)[
+                    "token_idx"
+                ].transform(min)
+                == datum["token_idx"]
+            )
+            datum = datum[idx]
+        else:
+            datum = ave_emb(datum)  # average embs per word
 
     ## Token manipulation
     if "-all" in args.datum_mod:  # all tokens
@@ -670,14 +840,6 @@ def mod_datum(args, datum):
 
     # else:
     #     raise Exception('Invalid Datum Modification')
-
-    # Average Embeddings per word
-    if (
-        "glove" not in args.emb_type  # glove emb
-        and "glove50" not in args.align_with  # aligned with glove emb
-        and "glove" not in args.emb_mod  # replaced with glove emb (already aligned)
-    ):
-        datum = ave_emb(datum)  # average embs per word
 
     # Normalize Embeddings
     if args.normalize:
@@ -725,17 +887,25 @@ def read_datum(args, stitch):
     print(f"After loading: Datum loads with {len(df)} words")
 
     df = process_conversations(args, df, stitch)
+    # df = ave_emb_preds(df)  # HACK 2
     df = process_embeddings(args, df)
     print(f"After processing: Datum now has {len(df)} words")
 
     df = filter_datum(args, df)
     print(f"After filtering: Datum now has {len(df)} words")
-
     df = mod_datum(args, df)  # further filter datum based on datum_mod argument
+    df = get_pos(df)
+    if "-pos" in args.datum_mod:
+        keep_pos = ["NOUN", "VERB", "ADJ", "ADP", "ADV"]
+        df = df[df.part_of_speech.isin(keep_pos)]
     print(f"Datum final length: {len(df)}")
 
     if "earlypca" in args.datum_mod:  # pca
         print(f"Running early pca due to big embedding dimension")
         df = run_pca(args, df)
+    # else:
+    #     df.drop(columns="embeddings", inplace=True)
+    #     df.to_pickle(f"{args.sid}_gpt2_1024.pkl")
+    #     breakpoint()
 
     return df

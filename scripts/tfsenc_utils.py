@@ -87,7 +87,7 @@ def cv_lm_003_prod_comp(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag):
             Ytraf = Ytraf.astype("float32")
             Xtesf = Xtesf.astype("float32")
             Ytesf = Ytesf.astype("float32")
-            if Xtra.shape[0] < Xtra.shape[1]:
+            if Xtraf.shape[0] < Xtraf.shape[1]:
                 model = make_pipeline(StandardScaler(), KernelRidgeCV(alphas=alphas))
             else:
                 model = make_pipeline(StandardScaler(), RidgeCV(alphas=alphas))
@@ -99,7 +99,22 @@ def cv_lm_003_prod_comp(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag):
                 PCA(args.pca_to, whiten=True),
                 LinearRegression(),
             )
-        model.fit(Xtraf, Ytraf)
+        try:
+            model.fit(Xtraf, Ytraf)
+        except:  # HACK
+            if Xtra.shape[0] < Xtra.shape[1]:
+                model = make_pipeline(
+                    StandardScaler(),
+                    KernelRidgeCV(
+                        alphas=alphas, solver_params={"diagonalize_method": "svd"}
+                    )
+                )
+            else:
+                model = make_pipeline(
+                    StandardScaler(),
+                    RidgeCV(alphas=alphas, solver_params={"diagonalize_method": "svd"})
+                )
+            model.fit(Xtraf, Ytraf)
 
         if lag != -1:
             B = model.named_steps["linearregression"].coef_
