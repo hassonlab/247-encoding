@@ -18,22 +18,24 @@ E_LIST := $(shell seq 1 105)
 BC := 
 
 # 676 Electrode IDs
-# SID := 676
-# E_LIST := $(shell seq 1 125)
+SID := 676
+E_LIST := $(shell seq 1 125)
 # BC := --bad-convos 38 39
+BC :=
 
 # 717 Electrode IDs
-# SID := 7170
-# E_LIST := $(shell seq 1 256)
-# BC :=
+SID := 7170
+E_LIST := $(shell seq 1 256)
+BC :=
 
 # 798 Electrode IDs
-# SID := 798
-# E_LIST := $(shell seq 1 198)
-# BC :=
+SID := 798
+E_LIST := $(shell seq 1 198)
+BC :=
 
 # Sig file will override whatever electrodes you choose
 SIG_FN := 
+# SIG_FN := --sig-elec-file tfs-sig-file-glove-$(SID).csv
 # SIG_FN := --sig-elec-file test.csv
 # SIG_FN := --sig-elec-file 129-phase-5000-sig-elec-glove50d-perElec-FDR-01-LH.csv
 # SIG_FN := --sig-elec-file colton625.csv colton625.csv
@@ -92,10 +94,14 @@ CONVERSATION_IDX := 0
 # Choose which set of embeddings to use
 # {glove50 | gpt2-xl | blenderbot-small}
 EMB := blenderbot
-EMB := gpt2-xl
 EMB := blenderbot-small
+EMB := Meta-Llama-3-8B
+EMB := Llama-2-7b-hf
 EMB := gpt2-xl
+CNXT_LEN := 1
+CNXT_LEN := 8192
 CNXT_LEN := 1024
+CNXT_LEN := 32
 
 # Choose the window size to average for each point
 WS := 200
@@ -109,7 +115,7 @@ ALIGN_WITH :=
 
 # Choose layer of embeddings to use
 # {1 for glove, 48 for gpt2, 8 for blenderbot encoder, 16 for blenderbot decoder}
-LAYER_IDX := 48
+LAYER_IDX := 0
 
 # Choose whether to PCA (0 or for no pca)
 PCA_TO := 50
@@ -150,9 +156,11 @@ NM := l2
 
 # {glove50: force glove embeddings for glove50 pred}
 
-EM := shift-emb
 EM := 
+EM := llama3
 EM := glove50
+EM := llama3-pred
+EM := shift-emb
 
 
 ############## Datum Modifications ##############
@@ -176,8 +184,8 @@ outside of the conversation range (currently not used)
 #   If no n or x is provided, n defaults to 5, x defaults to 30
 
 #	for all emb_type, use predictions from another emb_type by concat 'emb_type' and 'pred_type':
-#	{gpt2-xl-corret: choose words correctly predicted by gpt2}
-#	{gpt2-xl-incorret: choose words incorrectly predicted by gpt2}
+#	{gpt2-xl-correct: choose words correctly predicted by gpt2}
+#	{gpt2-xl-incorrect: choose words incorrectly predicted by gpt2}
 #	{blenderbot-small-correct: choose words correctly predicted by bbot decoder}
 #	{blenderbot-small-incorrect: choose words incorrectly predicted by bbot decoder}
 #	{gpt2-pred: choose all words, for words incorrectly predicted by gpt2, use embeddings of the words \
@@ -185,9 +193,11 @@ actually predicted by gpt2} (only used for glove embeddings)
 
 # 3. {everything else is purely for the result folder name}
 
-DM := lag2k-25-incorrect
-DM := lag10k-25-all
-DM := lag2k-25-improb
+DM := lag2k-25-correct
+DM := lag5k-25-prob-pos-earlypca
+DM := lag5k-25-all-earlypca
+DM := lag5k-25-aligned-improb-earlypca
+DM := lag5k-25-prob-earlypca
 
 
 ############## Model Modification ##############
@@ -196,6 +206,7 @@ DM := lag2k-25-improb
 # {leave empty for regular encoding}
 MM := best-lag
 MM := pc-flip-best-lag
+MM := ridge
 MM := 
 
 # Choose the command to run: python runs locally, echo is for debugging, sbatch
@@ -250,7 +261,7 @@ run-encoding:
 		$(SH) \
 		$(PSH) \
 		--normalize $(NM)\
-		--output-parent-dir $(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-$(DM)-$(EM) \
+		--output-parent-dir $(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-$(EM)-$(DM) \
 		--output-prefix $(USR)-$(WS)ms-$(WV);\
 
 
