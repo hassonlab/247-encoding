@@ -690,18 +690,20 @@ def run_pca(args, df):
         emb = pca_word.fit_transform(emb).squeeze()  # pca to 1 window
         return emb
 
-    if "pcapca" in args.window_num:  # used for concatenation of symbolic embs
-        print("PCA by word")
+    if "pcapca" in args.window_num and (
+        "var-win" in args.emb_type or "symbolic-speech" in args.emb_type
+    ):  # used for concatenation of symbolic embs
+        print("PCA by word")  # first pca by word
         df["embeddings"] = df.embeddings.apply(word_pca)
         df_emb = df["embeddings"]
         embs = np.vstack(df_emb.values)
-        print(f"PCA from {embs.shape[1]} to {pca_to}")
+        print(f"PCA from {embs.shape[1]} to {pca_to}")  # then pca to 50
         pca_output = pca.fit_transform(embs)
         print(f"PCA explained variance: {sum(pca.explained_variance_)}")
         print(f"PCA explained variance ratio: {sum(pca.explained_variance_ratio_)}")
         df["embeddings"] = pca_output.tolist()
-    elif "pca" in args.window_num:
-        print("PCA by word")
+    elif "pca" in args.window_num and "symbolic-lang" not in args.emb_type:
+        print("PCA by word")  # pca by word
         df["embeddings"] = df.embeddings.apply(word_pca)
     else:
         df_emb = df["embeddings"]

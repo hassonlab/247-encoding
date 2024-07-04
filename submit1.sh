@@ -1,6 +1,6 @@
 #!/bin/bash
-#SBATCH --time=2:30:00
-#SBATCH --mem=100GB
+#SBATCH --time=9:10:00
+#SBATCH --mem=140GB
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=4
 #SBATCH -o 'logs/%A.log'
@@ -13,8 +13,8 @@ then
 elif [[ "$HOSTNAME" == *"della"* ]]
 then
     echo "It's Della"
-    module load anaconda
-    source activate /home/hgazula/.conda/envs/247-main
+    module load anaconda3/2021.11
+    source activate /home/kw1166/.conda/envs/247-main
 else
     module load anacondapy
     source activate srm

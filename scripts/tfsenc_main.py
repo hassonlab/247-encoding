@@ -316,10 +316,10 @@ def main():
             if "ac-concat" in args.datum_mod:  # add acoustic to speech
                 args.emb_df_path = args.emb_df_path.replace("layer_04", "layer_00")
             if "symspeech-concat" in args.datum_mod:  # add symspeech to speech
-                args.emb_df_path = f"/scratch/gpfs/kw1166/247-encoding/data/tfs/{args.sid}/pickles/embeddings/symbolic-speech/full/cnxt_0001/layer_00.pkl"
+                args.emb_df_path = f"/scratch/gpfs/kw1166/247/247-encoding/data/tfs/{args.sid}/pickles/embeddings/symbolic-speech/full/cnxt_0001/layer_00.pkl"
                 args.emb_type = "symbolic-speech"
             if "symlang-concat" in args.datum_mod:  # add symlang to lang
-                args.emb_df_path = f"/scratch/gpfs/kw1166/247-encoding/data/tfs/{args.sid}/pickles/embeddings/symbolic-lang/full/cnxt_0001/layer_00.pkl"
+                args.emb_df_path = f"/scratch/gpfs/kw1166/247/247-encoding/data/tfs/{args.sid}/pickles/embeddings/symbolic-lang/full/cnxt_0001/layer_00.pkl"
                 args.emb_type = "symbolic-lang"
             if "full-concat" in args.datum_mod:
                 args.emb_df_path = (
@@ -350,7 +350,7 @@ def main():
 
     # Processing significant electrodes or individual subjects
     electrode_info = process_subjects(args)
-    parallel_encoding(args, electrode_info, datum, stitch_index)
+    parallel_encoding(args, electrode_info, datum, stitch_index, False)
 
     return
 
