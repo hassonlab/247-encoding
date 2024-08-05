@@ -175,8 +175,12 @@ def concat_emb(args, datum, mode="concat-emb"):
         datum2.loc[:, "embeddings_shifted"] = datum2.embeddings_shifted.shift(step)
         # datum2.loc[:, "pred_shifted"] = datum2.pred_shifted.shift(step)
         # datum2.loc[:, "rank_shifted"] = datum2.rank_shifted.shift(step)
-
-        datum2 = datum2[~datum2.embeddings_shifted.isna()]
+        # datum2 = datum2[ # split prob comp concatenation
+        #     datum2.production.shift(step).eq(datum2.production)
+        #     & datum2.conversation_id.shift(step).eq(datum2.conversation_id)
+        # ]
+        print("NOT CARE FOR COMP/PROD SEPARATION")
+        datum2 = datum2[datum2.conversation_id.shift(step) == datum2.conversation_id]
 
         def concat(x):
             return np.concatenate((x["embeddings"], x["embeddings_shifted"]))
@@ -195,6 +199,75 @@ def concat_emb(args, datum, mode="concat-emb"):
     datum = datum2  # reassign back to datum
     print(f"Concatenating resulted in {before_shift_num - len(datum.index)} less words")
 
+    return datum
+
+
+def concat_emb_improb(args, datum, mode="concat-emb-improb"):
+    """Concatenate the embeddings based on datum_mod argument, but concatenate
+        only the next improb words
+
+    Args:
+        args (namespace): commandline arguments
+        datum: processed and filtered datum
+        mode: concat-emb
+
+    Returns:
+        DataFrame: datum with shifted embeddings
+    """
+    if "concat-emb-improb" in args.emb_mod:
+        concat_shift_num = 0
+        shift_num, step = mod_datum_arg_parse(args.emb_mod, mode)
+        print(f"{mode} {shift_num} * {step * -1} steps ")
+    else:
+        concat_shift_num, shift_step = mod_datum_arg_parse(args.emb_mod, "concat-emb")
+        print(f"Concat Consecutive {concat_shift_num} * {shift_step * -1} steps ")
+        shift_num, step = mod_datum_arg_parse(args.emb_mod, "improb")
+        print(f"Concat Improb {shift_num} * {step * -1} steps ")
+
+    before_shift_num = len(datum.index)
+    bot = datum.true_pred_prob.quantile(0.3)
+    datum2 = datum.copy()  # setting copy to avoid warning
+
+    for i in np.arange(shift_num):
+        # get next improb embeddings
+        if "level_0" in datum2.columns:
+            idx_col = "level_0"
+        else:
+            idx_col = "index"
+
+        datum2["improb"] = np.nan
+        datum2.loc[datum2.true_pred_prob.lt(bot), "improb"] = datum2[idx_col]
+        datum2.improb = (
+            datum2.improb.bfill().shift(-1 - concat_shift_num).ffill().astype(int)
+        )
+
+        new_embs = datum2.loc[datum2.improb, "embeddings"]
+        new_embs.index = datum2.index
+        datum2["embeddings_next"] = new_embs
+
+        # get rid of improb from future conversations
+        datum2["improb_check"] = np.nan
+        datum2.loc[datum2.true_pred_prob.lt(bot), "improb_check"] = datum2[
+            "conversation_id"
+        ]
+        datum2.improb_check = (
+            datum2.improb_check.bfill().shift(-1 - concat_shift_num).ffill().astype(int)
+        )
+
+        # for each convo, take only words before the last improb word
+        datum2 = datum2[
+            datum2.improb.gt(datum2[idx_col] + concat_shift_num)
+            & datum2.improb_check.eq(datum2.conversation_id)
+        ]
+
+        # concat embeddings
+        def concat(x):
+            return np.concatenate((x["embeddings"], x["embeddings_next"]))
+
+        datum2.loc[:, "embeddings"] = datum2.apply(concat, axis=1)
+
+    datum = datum2  # reassign back to datum
+    print(f"Concatenating resulted in {before_shift_num - len(datum.index)} less words")
     return datum
 
 
@@ -705,15 +778,19 @@ def mod_datum_by_preds(args, datum):
         datum_top = datum[datum.true_pred_prob >= top].copy()
         datum_bot = datum[datum.true_pred_prob <= bot].copy()
 
-        if True:
-            datum.drop(columns="embeddings", inplace=True)
-            datum_top_aligned = datum_top[datum_top.word.isin(datum_bot.word.unique())]
-            datum_bot_aligned = datum_bot[datum_bot.word.isin(datum_top.word.unique())]
-            datum_top.to_pickle(f"{args.sid}_gpt2_32_prob.pkl")
-            datum_bot.to_pickle(f"{args.sid}_gpt2_32_improb.pkl")
-            datum_top_aligned.to_pickle(f"{args.sid}_gpt2_32_prob_a.pkl")
-            datum_bot_aligned.to_pickle(f"{args.sid}_gpt2_32_improb_a.pkl")
-            breakpoint()
+        # if True:
+        #     datum.drop(columns="embeddings", inplace=True)
+        #     # datum_top_aligned = datum_top[datum_top.word.isin(datum_bot.word.unique())]
+        #     # datum_bot_aligned = datum_bot[datum_bot.word.isin(datum_top.word.unique())]
+        #     datum_mid = datum[
+        #         datum.true_pred_prob.gt(bot) & datum.true_pred_prob.lt(top)
+        #     ].copy()
+        #     datum_top.to_pickle(f"{args.sid}_llama2_32_prob.pkl")
+        #     datum_bot.to_pickle(f"{args.sid}_llama2_32_improb.pkl")
+        #     # datum_top_aligned.to_pickle(f"{args.sid}_gpt2_32_prob_a.pkl")
+        #     # datum_bot_aligned.to_pickle(f"{args.sid}_gpt2_32_improb_a.pkl")
+        #     datum_mid.to_pickle(f"{args.sid}_llama2_32_mid.pkl")
+        #     breakpoint()
 
         # if percentile == 30:  # mid
         #     prob_mid = datum.true_pred_prob.quantile(85 / 100)
@@ -778,8 +855,8 @@ def mod_datum_by_preds(args, datum):
     return datum
 
 
-def mod_datum_arg_parse(arg, mode, default_val="1"):
-    partial = arg[arg.find(mode) + len(mode) :]
+def mod_datum_arg_parse(args, mode, default_val="1"):
+    partial = args[args.find(mode) + len(mode) :]
 
     if partial.find("-") >= 0:  # if there is another tag later
         partial = partial[: partial.find("-")]
@@ -827,6 +904,8 @@ def mod_datum(args, datum):
             datum = datum[idx]
         else:
             datum = ave_emb(datum)  # average embs per word
+
+    datum = get_pos(datum)
 
     ## Token manipulation
     if "-all" in args.datum_mod:  # all tokens
@@ -891,10 +970,17 @@ def read_datum(args, stitch):
     df = process_embeddings(args, df)
     print(f"After processing: Datum now has {len(df)} words")
 
+    ######################
+    # if "concat-emb" in args.emb_mod and "improb" in args.emb_mod:  # concat improb
+    #     print(f"Running early pca due to big embedding dimension")
+    #     # df = run_pca(args, df)
+    #     df = concat_emb_improb(args, df, "concat-emb-improb")
+
+    #######################
+
     df = filter_datum(args, df)
     print(f"After filtering: Datum now has {len(df)} words")
     df = mod_datum(args, df)  # further filter datum based on datum_mod argument
-    df = get_pos(df)
     if "-pos" in args.datum_mod:
         keep_pos = ["NOUN", "VERB", "ADJ", "ADP", "ADV"]
         df = df[df.part_of_speech.isin(keep_pos)]
@@ -905,7 +991,13 @@ def read_datum(args, stitch):
         df = run_pca(args, df)
     # else:
     #     df.drop(columns="embeddings", inplace=True)
-    #     df.to_pickle(f"{args.sid}_gpt2_1024.pkl")
+    #     df.to_pickle(f"{args.sid}_gpt2_32.pkl")
     #     breakpoint()
+
+    if "concat-emb" in args.emb_mod and "improb" not in args.emb_mod:  # regular concat
+        df = concat_emb(args, df, "concat-emb")
+
+    elif "concat-emb" in args.emb_mod and "improb" in args.emb_mod:  # concat improb
+        df = concat_emb_improb(args, df, "concat-emb-improb")
 
     return df

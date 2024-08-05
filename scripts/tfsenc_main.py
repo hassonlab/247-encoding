@@ -55,7 +55,7 @@ def skip_elecs_done(args, electrode_info):
 
     elecs_num = len(electrode_info)
     for elec, count in elecs_counts.most_common():
-        if count == 4:
+        if count >= 4:
             print(f"Skipping elec {elec}")
             sid_string = elec[: elec.find("_")]
             if sid_string.isdigit():  # actually a sid
@@ -188,11 +188,9 @@ def single_electrode_encoding(electrode, args, datum, stitch_index):
         prod_test, comp_test = prod_train, comp_train
 
     if len(prod_train[0]) > 0 and len(prod_test[0]) > 0:
-        prod_results = run_regression(args, *prod_train, *prod_test)
-        write_encoding_results(args, prod_results, elec_name, "prod")
+        run_regression(args, *prod_train, *prod_test, elec_name, "prod")
     if len(comp_train[0]) > 0 and len(comp_test[0]) > 0:
-        comp_results = run_regression(args, *comp_train, *comp_test)
-        write_encoding_results(args, comp_results, elec_name, "comp")
+        run_regression(args, *comp_train, *comp_test, elec_name, "comp")
     return (sid, elec_name, len(prod_X), len(comp_X))
 
 
@@ -235,10 +233,11 @@ def parallel_encoding(args, electrode_info, datum, stitch_index, parallel=True):
     else:
         print("Running all electrodes")
         for electrode in electrode_info.items():
-            try:
-                single_electrode_encoding(electrode, args, datum, stitch_index)
-            except:
-                print(f"{electrode} failed!!!")
+            single_electrode_encoding(electrode, args, datum, stitch_index)
+            # try:
+            #     single_electrode_encoding(electrode, args, datum, stitch_index)
+            # except:
+            #     print(f"{electrode} failed!!!")
 
     return None
 
@@ -261,8 +260,6 @@ def main():
     # Processing significant electrodes or individual subjects
     electrode_info = process_subjects(args)
     parallel = False
-    if not args.model_mod:  # HACK to do parallel for linear reg
-        parallel = False
     parallel_encoding(args, electrode_info, datum, stitch_index, parallel)
 
     return

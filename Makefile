@@ -24,14 +24,14 @@ E_LIST := $(shell seq 1 125)
 BC :=
 
 # 717 Electrode IDs
-SID := 7170
-E_LIST := $(shell seq 1 256)
-BC :=
+# SID := 7170
+# E_LIST := $(shell seq 1 256)
+# BC :=
 
 # 798 Electrode IDs
-SID := 798
-E_LIST := $(shell seq 1 198)
-BC :=
+# SID := 798
+# E_LIST := $(shell seq 1 198)
+# BC :=
 
 # Sig file will override whatever electrodes you choose
 SIG_FN := 
@@ -96,8 +96,8 @@ CONVERSATION_IDX := 0
 EMB := blenderbot
 EMB := blenderbot-small
 EMB := Meta-Llama-3-8B
-EMB := Llama-2-7b-hf
 EMB := gpt2-xl
+EMB := Llama-2-7b-hf
 CNXT_LEN := 1
 CNXT_LEN := 8192
 CNXT_LEN := 1024
@@ -118,7 +118,7 @@ ALIGN_WITH :=
 LAYER_IDX := 0
 
 # Choose whether to PCA (0 or for no pca)
-PCA_TO := 50
+PCA_TO := 200
 
 # Specify the minimum word frequency (0 for 247, 5 for podcast)
 MWF := 0
@@ -160,8 +160,9 @@ EM :=
 EM := llama3
 EM := glove50
 EM := llama3-pred
+EM := shift-emb-concat-emb2-improb
 EM := shift-emb
-
+EM := shift-emb-concat-emb5
 
 ############## Datum Modifications ##############
 # Add specific tags concatenated by '-'. The available tags are as below:
@@ -195,9 +196,12 @@ actually predicted by gpt2} (only used for glove embeddings)
 
 DM := lag2k-25-correct
 DM := lag5k-25-prob-pos-earlypca
-DM := lag5k-25-all-earlypca
 DM := lag5k-25-aligned-improb-earlypca
-DM := lag5k-25-prob-earlypca
+DM := lag5k-25-incorrect34-earlypca-200-nopca
+DM := lag5k-25-correct2-earlypca-200-nopca
+DM := lag5k-25-all
+DM := lag2k-25-all-earlypca-200
+DM := lag5k-25-all-earlypca-200
 
 
 ############## Model Modification ##############
@@ -206,14 +210,15 @@ DM := lag5k-25-prob-earlypca
 # {leave empty for regular encoding}
 MM := best-lag
 MM := pc-flip-best-lag
-MM := ridge
+MM := bridge
 MM := 
+MM := ridge
 
 # Choose the command to run: python runs locally, echo is for debugging, sbatch
 # is for running on SLURM all lags in parallel.
 CMD := echo
-CMD := sbatch submit1.sh
 CMD := python
+CMD := sbatch submit1.sh
 # {echo | python | sbatch submit1.sh}
 
 #TODO: move paths to makefile

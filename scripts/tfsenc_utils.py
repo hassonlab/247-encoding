@@ -1,22 +1,23 @@
-import csv
 import os
-from functools import partial
-from imp import C_EXTENSION
-from multiprocessing import Pool
+import csv
 
-import mat73
+# from imp import C_EXTENSION
+
 import numpy as np
 import pandas as pd
+import torch
 from numba import jit, prange
 from scipy import stats
 from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
 from himalaya.ridge import GroupRidgeCV, RidgeCV, ColumnTransformerNoStack
 from himalaya.kernel_ridge import (
+    MultipleKernelRidgeCV,
     KernelRidgeCV,
     ColumnKernelizer,
     Kernelizer,
 )
+from himalaya.scoring import correlation_score, correlation_score_split
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import GroupKFold, KFold
 from sklearn.pipeline import make_pipeline
@@ -60,7 +61,7 @@ def cv_lm_003_prod_comp(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag):
 
     if args.model_mod and "ridge" in args.model_mod:
         print(f"ridge, emb_dim = {Xtes.shape[1]}")
-    elif args.pca_to == 0:
+    elif args.pca_to == 0 or "nopca" in args.datum_mod:
         print(f"No PCA, emb_dim = {Xtes.shape[1]}")
     else:
         print(f"PCA from {Xtes.shape[1]} to {args.pca_to}")
@@ -82,15 +83,23 @@ def cv_lm_003_prod_comp(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag):
 
         # Fit model
         if args.model_mod and "ridge" in args.model_mod:
-            alphas = np.logspace(0, 20, 10)
             Xtraf = Xtraf.astype("float32")
             Ytraf = Ytraf.astype("float32")
             Xtesf = Xtesf.astype("float32")
             Ytesf = Ytesf.astype("float32")
+
+            alphas = np.logspace(0, 20, 10)
+
             if Xtraf.shape[0] < Xtraf.shape[1]:
                 model = make_pipeline(StandardScaler(), KernelRidgeCV(alphas=alphas))
             else:
                 model = make_pipeline(StandardScaler(), RidgeCV(alphas=alphas))
+                # if args.sid == 676:
+                #     print("force cpu for 676")
+                #     model = make_pipeline(
+                #         StandardScaler(),
+                #         RidgeCV(alphas=alphas, Y_in_cpu=True, force_cpu=True),
+                #     )
         elif args.pca_to == 0 or "nopca" in args.datum_mod:
             model = make_pipeline(StandardScaler(), LinearRegression())
         else:
@@ -99,22 +108,8 @@ def cv_lm_003_prod_comp(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag):
                 PCA(args.pca_to, whiten=True),
                 LinearRegression(),
             )
-        try:
-            model.fit(Xtraf, Ytraf)
-        except:  # HACK
-            if Xtra.shape[0] < Xtra.shape[1]:
-                model = make_pipeline(
-                    StandardScaler(),
-                    KernelRidgeCV(
-                        alphas=alphas, solver_params={"diagonalize_method": "svd"}
-                    )
-                )
-            else:
-                model = make_pipeline(
-                    StandardScaler(),
-                    RidgeCV(alphas=alphas, solver_params={"diagonalize_method": "svd"})
-                )
-            model.fit(Xtraf, Ytraf)
+        torch.cuda.empty_cache()
+        model.fit(Xtraf, Ytraf)
 
         if lag != -1:
             B = model.named_steps["linearregression"].coef_
@@ -129,6 +124,94 @@ def cv_lm_003_prod_comp(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag):
         YHAT[fold_tes == i, :] = foldYhat.reshape(-1, nChans)
 
     return (YHAT, Ynew)
+
+
+def encoding_cv_bridge(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, elec, mode):
+    print(f"No PCA, do ridge, emb_dim = {Xtes.shape[1]}")
+
+    ##### ENCODING #####
+    nSamps = Xtes.shape[0]
+    nChans = Ytra.shape[1] if Ytra.shape[1:] else 1
+
+    emb_dim = 4096
+    if Xtes.shape[1] % emb_dim == 0:
+        concats = int(Xtes.shape[1] / emb_dim)
+        feat_spaces = [f"n+{concat}" for concat in np.arange(1, concats)]
+        feat_spaces = ["n"] + feat_spaces
+    columns = []
+    start = 0
+    for feat_space in feat_spaces:
+        column = (feat_space, StandardScaler(), slice(start, start + emb_dim))
+        columns.append(column)
+        start += emb_dim
+
+    YHAT = np.zeros((len(feat_spaces), nSamps, nChans))
+    Ynew = np.zeros((nSamps, nChans))
+    solver = "random_search"
+    n_iter = 10
+    alphas = np.logspace(0, 20, 10)
+
+    for i in range(0, args.fold_num):
+        Xtraf, Xtesf = Xtra[fold_tra != i], Xtes[fold_tes == i]
+        Ytraf, Ytesf = Ytra[fold_tra != i], Ytes[fold_tes == i]
+
+        Ytesf -= np.mean(Ytraf, axis=0)
+        Ytraf -= np.mean(Ytraf, axis=0)
+
+        # Fit model
+        Xtraf = Xtraf.astype("float32")
+        Ytraf = Ytraf.astype("float32")
+        Xtesf = Xtesf.astype("float32")
+        Ytesf = Ytesf.astype("float32")
+        ct = ColumnTransformerNoStack(columns)
+        solver_params = dict(n_iter=n_iter, alphas=alphas)
+        model = make_pipeline(
+            ct,
+            GroupRidgeCV(
+                groups="input",
+                solver=solver,
+                solver_params=solver_params,
+            ),
+        )
+
+        model.fit(Xtraf, Ytraf)
+
+        if len(feat_spaces) > 1:  # banded ridge model
+            foldYhat_split = model.predict(Xtesf, split=True)
+            YHAT[:, fold_tes == i, :] = foldYhat_split.cpu().numpy()
+        else:  # one model
+            foldYhat = model.predict(Xtesf)
+            YHAT[0, fold_tes == i, :] = foldYhat.cpu().numpy().reshape(-1, nChans)
+        Ynew[fold_tes == i, :] = Ytesf.reshape(-1, nChans)
+
+    ##### CORRELATION #####
+    Ynew = Ynew.astype("float32")
+    YHAT = YHAT.astype("float32")
+    if len(feat_spaces) > 1:
+        cor_res = correlation_score_split(Ynew, YHAT[0:, :, :])
+    else:
+        cor_res = correlation_score(Ynew, YHAT[0, :, :])
+    ##### WRITING #####
+    trial_str = append_jobid_to_string(args, mode)
+    filename = os.path.join(args.full_output_dir, f"{elec}{trial_str}.csv")
+
+    if len(feat_spaces) > 1:  # banded ridge
+        for feat_idx, feat_space in enumerate(feat_spaces):
+            filename_feat = os.path.join(
+                args.full_output_dir, f"{elec}{trial_str}_{feat_space}.csv"
+            )
+            with open(filename_feat, "w") as csvfile:
+                print(f"writing file {feat_space}")
+                csvwriter = csv.writer(csvfile)
+                csvwriter.writerow(cor_res[feat_idx, :].tolist())
+        cor_res = torch.sum(cor_res, axis=0)
+
+    with open(filename, "w") as csvfile:
+        print("writing file")
+        csvwriter = csv.writer(csvfile)
+        csvwriter.writerow(cor_res.tolist())
+
+    return
 
 
 @jit(nopython=True)
@@ -230,7 +313,18 @@ def encoding_mp_prod_comp(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag)
     return rps
 
 
-def run_regression(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes):
+def run_regression(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, elec_name, mode):
+
+    # RIDGE
+    if args.model_mod and "bridge" in args.model_mod:
+        # FIXME Note from Ken:
+        # Cleander code. Includes encoding and writing to results
+        # still need to set up per fold correlation and best lag model
+        encoding_cv_bridge(
+            args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, elec_name, mode
+        )
+        return
+
     perm_prod = []
     for i in range(args.npermutations):
         result = encoding_mp_prod_comp(
@@ -246,8 +340,9 @@ def run_regression(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes):
             )
         else:
             perm_prod.append(result)
+    write_encoding_results(args, perm_prod, elec_name, mode)
 
-    return perm_prod
+    return
 
 
 def get_groupkfolds(datum, X, Y, fold_num=10):

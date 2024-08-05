@@ -80,6 +80,9 @@ def setup_environ(args):
     args.best_lag = -1
 
     if args.model_mod and "ridge" in args.model_mod:
+        print("set backend to cuda")
         backend = set_backend("torch_cuda", on_error="warn")  # HACK
+
+    os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:512"
 
     return args
