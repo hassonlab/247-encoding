@@ -202,75 +202,6 @@ def concat_emb(args, datum, mode="concat-emb"):
     return datum
 
 
-def concat_emb_improb(args, datum, mode="concat-emb-improb"):
-    """Concatenate the embeddings based on datum_mod argument, but concatenate
-        only the next improb words
-
-    Args:
-        args (namespace): commandline arguments
-        datum: processed and filtered datum
-        mode: concat-emb
-
-    Returns:
-        DataFrame: datum with shifted embeddings
-    """
-    if "concat-emb-improb" in args.emb_mod:
-        concat_shift_num = 0
-        shift_num, step = mod_datum_arg_parse(args.emb_mod, mode)
-        print(f"{mode} {shift_num} * {step * -1} steps ")
-    else:
-        concat_shift_num, shift_step = mod_datum_arg_parse(args.emb_mod, "concat-emb")
-        print(f"Concat Consecutive {concat_shift_num} * {shift_step * -1} steps ")
-        shift_num, step = mod_datum_arg_parse(args.emb_mod, "improb")
-        print(f"Concat Improb {shift_num} * {step * -1} steps ")
-
-    before_shift_num = len(datum.index)
-    bot = datum.true_pred_prob.quantile(0.3)
-    datum2 = datum.copy()  # setting copy to avoid warning
-
-    for i in np.arange(shift_num):
-        # get next improb embeddings
-        if "level_0" in datum2.columns:
-            idx_col = "level_0"
-        else:
-            idx_col = "index"
-
-        datum2["improb"] = np.nan
-        datum2.loc[datum2.true_pred_prob.lt(bot), "improb"] = datum2[idx_col]
-        datum2.improb = (
-            datum2.improb.bfill().shift(-1 - concat_shift_num).ffill().astype(int)
-        )
-
-        new_embs = datum2.loc[datum2.improb, "embeddings"]
-        new_embs.index = datum2.index
-        datum2["embeddings_next"] = new_embs
-
-        # get rid of improb from future conversations
-        datum2["improb_check"] = np.nan
-        datum2.loc[datum2.true_pred_prob.lt(bot), "improb_check"] = datum2[
-            "conversation_id"
-        ]
-        datum2.improb_check = (
-            datum2.improb_check.bfill().shift(-1 - concat_shift_num).ffill().astype(int)
-        )
-
-        # for each convo, take only words before the last improb word
-        datum2 = datum2[
-            datum2.improb.gt(datum2[idx_col] + concat_shift_num)
-            & datum2.improb_check.eq(datum2.conversation_id)
-        ]
-
-        # concat embeddings
-        def concat(x):
-            return np.concatenate((x["embeddings"], x["embeddings_next"]))
-
-        datum2.loc[:, "embeddings"] = datum2.apply(concat, axis=1)
-
-    datum = datum2  # reassign back to datum
-    print(f"Concatenating resulted in {before_shift_num - len(datum.index)} less words")
-    return datum
-
-
 def rand_emb(df):
     emb_max = df.embeddings.apply(max).max()
     emb_min = df.embeddings.apply(min).min()
@@ -970,14 +901,6 @@ def read_datum(args, stitch):
     df = process_embeddings(args, df)
     print(f"After processing: Datum now has {len(df)} words")
 
-    ######################
-    # if "concat-emb" in args.emb_mod and "improb" in args.emb_mod:  # concat improb
-    #     print(f"Running early pca due to big embedding dimension")
-    #     # df = run_pca(args, df)
-    #     df = concat_emb_improb(args, df, "concat-emb-improb")
-
-    #######################
-
     df = filter_datum(args, df)
     print(f"After filtering: Datum now has {len(df)} words")
     df = mod_datum(args, df)  # further filter datum based on datum_mod argument
@@ -993,11 +916,5 @@ def read_datum(args, stitch):
     #     df.drop(columns="embeddings", inplace=True)
     #     df.to_pickle(f"{args.sid}_gpt2_32.pkl")
     #     breakpoint()
-
-    if "concat-emb" in args.emb_mod and "improb" not in args.emb_mod:  # regular concat
-        df = concat_emb(args, df, "concat-emb")
-
-    elif "concat-emb" in args.emb_mod and "improb" in args.emb_mod:  # concat improb
-        df = concat_emb_improb(args, df, "concat-emb-improb")
 
     return df
