@@ -106,7 +106,7 @@ def cv_lm_003_prod_comp(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, lag):
         # Predict
         foldYhat = model.predict(Xtesf)
         Ynew[fold_tes == i, :] = Ytesf.reshape(-1, nChans)
-        YHAT[fold_tes == i, :] = foldYhat.cpu().numpy().reshape(-1, nChans)
+        YHAT[fold_tes == i, :] = foldYhat.reshape(-1, nChans)
 
     return (YHAT, Ynew)
 
@@ -345,6 +345,7 @@ def run_regression(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, elec_name, 
             )
         else:
             perm_prod.append(result)
+
     write_encoding_results(args, perm_prod, elec_name, mode)
     return
 

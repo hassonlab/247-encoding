@@ -512,6 +512,13 @@ def mod_datum(args, datum):
     if "-all" in args.datum_mod:  # all tokens
         pass
 
+    elif "-half" in args.datum_mod:
+        datum = datum.sample(frac=0.5, random_state=42).sort_index()
+    elif "-quarter" in args.datum_mod:
+        datum = datum.sample(frac=0.25, random_state=42).sort_index()
+    elif "-tenth" in args.datum_mod:
+        datum = datum.sample(frac=0.1, random_state=42).sort_index()
+
     elif "-zeroshot" in args.datum_mod:  # zeroshot tokens
         datum = zeroshot_datum(datum)
 
@@ -547,10 +554,11 @@ def read_datum(args, stitch):
     emb_df = load_datum(args.emb_df_path)
     base_df = load_datum(args.base_df_path)
 
-    df = pd.merge(
-        base_df, emb_df, left_index=True, right_index=True
-    )  # TODO Needs testing (either bert_utterance or whisper)
-    print(f"After loading: Datum loads with {len(df)} words")
+    if "symbolic" in args.emb_type:
+        df = emb_df
+    else:
+        df = pd.merge(base_df, emb_df, left_index=True, right_index=True)
+        print(f"After loading: Datum loads with {len(df)} words")
 
     df = process_conversations(args, df, stitch)
     df = process_embeddings(args, df)
