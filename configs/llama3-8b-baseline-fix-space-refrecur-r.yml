@@ -1,0 +1,8 @@
+# Embeddings
+emb: Meta-Llama-3.1-8B_baseline_no_retrieval_fixspace_refrecur
+
+# Embedding modifications: none, rand, emb, shift-emb, concat-emb
+emb_mod: shift-emb
+# pca_to not used for ridge
+pca_to: 0
+ridge: True
