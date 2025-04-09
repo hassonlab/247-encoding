@@ -300,7 +300,6 @@ def process_embeddings(args, df):
     Returns:
         df (df): processed datum with correct embeddings
     """
-
     # drop NaN / None embeddings
     if args.emb == "glove50":
         df = df.dropna(subset=["embeddings"])
@@ -410,7 +409,7 @@ def read_datum(args, stitch):
     args.kernel_sizes = []
     for idx, emb_df_path in enumerate(args.emb_df_paths.split()):
         curr_emb_df = load_datum(emb_df_path)
-        args.kernel_sizes.append(len(curr_emb_df['embeddings'].iloc[0]))
+        args.kernel_sizes.append(len(curr_emb_df['embeddings'].iloc[1]))
         if idx == 0:
             emb_df = curr_emb_df
         else:
@@ -420,6 +419,8 @@ def read_datum(args, stitch):
     if "refrecur" in args.emb:
         base_df = base_df[base_df["annot_type"].isin(["ref", "recur"])]
         base_df.index = np.arange(len(base_df))
+        assert(base_df.shape[0] == emb_df.shape[0]), \
+            f"Base df and emb df length mismatch: {base_df.shape[0]} vs {emb_df.shape[0]}"
     df = pd.merge(base_df, emb_df, left_index=True, right_index=True)
     print(f"After loading: Datum loads with {len(df)} words")
 
