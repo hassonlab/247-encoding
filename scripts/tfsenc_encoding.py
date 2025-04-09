@@ -2,6 +2,7 @@ import csv
 import os
 import numpy as np
 import pandas as pd
+import pickle
 import torch
 from numba import jit, prange
 from scipy import stats
@@ -19,6 +20,7 @@ from himalaya.kernel_ridge import (
 )
 from himalaya.scoring import correlation_score, correlation_score_split
 
+do_debug = False
 
 # @jit(nopython=True)
 def build_Y(brain_signal, onsets, lags, window_size):
@@ -281,6 +283,7 @@ def encoding_regression_permutation(args, X, Y, folds, num_perm=1000, min_roll=5
     YHAT_extra = None
     Ynew_extra = None
     corrs = []
+    corrs_split = []
     
     Y = np.nan_to_num(Y)
     # Circular shift
@@ -289,30 +292,61 @@ def encoding_regression_permutation(args, X, Y, folds, num_perm=1000, min_roll=5
     for i in range(num_perm):
         Yperm[:, i * nChans : (i + 1) * nChans] = np.roll(Y, np.random.choice(range(min_roll, nSamps - min_roll)), axis=0)
 
-    alphas = [10581255000000.0]
-    solver_params = {"n_targets_batch": 161 * num_perm}
-    model = make_pipeline(
-        StandardScaler(),
-        RidgeCV(alphas=alphas, solver_params=solver_params),
-    )
+    alphas = np.array([10581255000000.0])
+    solver_params = {"n_targets_batch": 161 * num_perm, "alphas": alphas, "n_iter": 1}
+    if getattr(args, "kernel_sizes", None) is not None:
+        kernel_sizes_cumsum = np.cumsum(args.kernel_sizes)
+        if getattr(args, "bridge_type", None) == "GroupRidgeCV":
+            print("Using GroupRidgeCV")
+            ct = ColumnTransformerNoStack([(f"group_{i}", StandardScaler(), np.arange(kernel_start, kernel_stop))
+                                            for i, (kernel_start, kernel_stop) in enumerate(zip([0]+list(kernel_sizes_cumsum[:-1]), kernel_sizes_cumsum))])
+            grcv_model = GroupRidgeCV(groups="input", solver_params=solver_params)
+            model = make_pipeline(ct, grcv_model)
+        else:
+            print("Using MultipleKernelRidgeCV")
+            ck = ColumnKernelizer([(f"kernel_{i}", Kernelizer(kernel="linear"), np.arange(kernel_start, kernel_stop))
+                                for i, (kernel_start, kernel_stop) in enumerate(zip([0]+list(kernel_sizes_cumsum[:-1]), kernel_sizes_cumsum))])
+            model = make_pipeline(StandardScaler(), ck, MultipleKernelRidgeCV(kernels="precomputed", solver_params=solver_params))
+    else:
+        print(f"Running RidgeCV")
+        model = make_pipeline(
+            StandardScaler(),
+            RidgeCV(alphas=alphas, solver_params=solver_params),
+        )
     
     for i in range(0, args.cv_fold_num):
         Xtrain, Xtest = X[folds != i], X[folds == i]
         Ytrain, Ytest = Yperm[folds != i], Yperm[folds == i]
+        
+        # Skip rows where there are nan X vals. (Might have nan Xs if e.g., retrieval CL0 with no retrieved words.)
+        non_nan_rows_train = np.where(~np.isnan(Xtrain.sum(1)))
+        Xtrain = Xtrain[non_nan_rows_train]
+        Ytrain = Ytrain[non_nan_rows_train]
+        non_nan_rows_test = np.where(~np.isnan(Xtest.sum(1)))
+        Xtest = Xtest[non_nan_rows_test]
+        Ytest = Ytest[non_nan_rows_test]
+        
         import time
         t0 = time.time()
         model.fit(Xtrain, Ytrain)
         print(time.time() - t0)
         foldYhat = model.predict(Xtest)
-        fold_corrs = correlation_score(Ytest, foldYhat)
+        fold_corrs = correlation_score(Ytest, foldYhat).cpu()
         corrs.append(fold_corrs)
-        Ynew[folds == i, :] = Ytest.reshape(-1, nChans * num_perm)
-        YHAT[folds == i, :] = foldYhat.reshape(-1, nChans * num_perm)
-    return (YHAT, Ynew, corrs, YHAT_extra, Ynew_extra, None)
+        if getattr(args, "bridge_type", None) != "RidgeCV":
+            foldYhat_split = model.predict(Xtest, split=True)
+            fold_cor_split = correlation_score_split(Ytest, foldYhat_split).cpu()
+        else:
+            fold_cor_split = None
+        corrs_split.append(fold_cor_split)
+        
+        Ynew[folds == i, :][non_nan_rows_test] = Ytest.reshape(-1, nChans * num_perm)
+        YHAT[folds == i, :][non_nan_rows_test] = foldYhat.reshape(-1, nChans * num_perm).cpu()
+    return (YHAT, Ynew, corrs, corrs_split, YHAT_extra, Ynew_extra)
 
 
 def encoding_regression(args, X, Y, folds, extra_train_data=None, extra_test_data=None,
-                        n_alphas_batch=50, n_iter=100, debug=False):
+                        n_alphas_batch=50, n_iter=25, debug=False):
     """Run regression for VM
 
     Args:
@@ -345,7 +379,10 @@ def encoding_regression(args, X, Y, folds, extra_train_data=None, extra_test_dat
     Y = np.nan_to_num(Y)
     if debug:
         n_iter = 1
+    if getattr(args, "n_iter", None) is not None:
+        n_iter = args.n_iter
     
+    all_fold_yhat_split = []
     for i in range(0, args.cv_fold_num):
 
         Xtrain, Xtest = X[folds != i], X[folds == i]
@@ -418,6 +455,7 @@ def encoding_regression(args, X, Y, folds, extra_train_data=None, extra_test_dat
         if getattr(args, "bridge_type", None) != "RidgeCV":
             foldYhat_split = model.predict(Xtest, split=True)
             fold_cor_split = correlation_score_split(Ytest, foldYhat_split)
+            all_fold_yhat_split.append(foldYhat_split.cpu()) 
         else:
             fold_cor_split = None
         
@@ -431,10 +469,11 @@ def encoding_regression(args, X, Y, folds, extra_train_data=None, extra_test_dat
             Ytest = Ytest.cpu()
         if torch.is_tensor(foldYhat):
             foldYhat = foldYhat.cpu()
-        Ynew[folds == i, :][non_nan_rows_test] = Ytest.reshape(-1, nChans)
-        YHAT[folds == i, :][non_nan_rows_test] = foldYhat.reshape(-1, nChans)
+        indices_to_update = np.where(folds == i)[0][non_nan_rows_test]
+        Ynew[indices_to_update, :] = Ytest.reshape(-1, nChans)
+        YHAT[indices_to_update, :] = foldYhat.reshape(-1, nChans)
 
-    return (YHAT, Ynew, corrs, corrs_split, YHAT_extra, Ynew_extra)
+    return (YHAT, Ynew, corrs, corrs_split, YHAT_extra, Ynew_extra, all_fold_yhat_split)
 
 
 def run_encoding(args, X, Y, folds, extra_train_data=None, extra_test_data=None, permute=False):
@@ -443,7 +482,7 @@ def run_encoding(args, X, Y, folds, extra_train_data=None, extra_test_data=None,
     if permute:
         Y_hat, Y_new, corrs, corrs_split, Y_hat_extra, Y_new_extra = encoding_regression_permutation(args, X, Y, folds)
     else:
-        Y_hat, Y_new, corrs, corrs_split, Y_hat_extra, Y_new_extra = encoding_regression(args, X, Y, folds, extra_train_data, extra_test_data)
+        Y_hat, Y_new, corrs, corrs_split, Y_hat_extra, Y_new_extra, all_fold_yhat_split = encoding_regression(args, X, Y, folds, extra_train_data, extra_test_data)
 
     # # Old correlation
     # rps = []
@@ -458,20 +497,22 @@ def run_encoding(args, X, Y, folds, extra_train_data=None, extra_test_data=None,
 
     # New correlation
     corr_datum = correlation_score(Y_new, Y_hat)
-    corrs.append(corr_datum)
     if torch.is_tensor(corr_datum):  # torch tensor
-        corrs = torch.stack(corrs)
+        corrs.append(corr_datum)
+        corrs = torch.stack([corr.cpu() for corr in corrs])
     else:
+        corrs.append(corr_datum)
         corrs = np.stack(corrs)
-    if torch.is_tensor(corrs_split[0]):
-        corrs_split = torch.stack(corrs_split)
-    else:
-        corrs_split = np.stack(corrs_split)
+    if corrs_split is not None:
+        if torch.is_tensor(corrs_split[0]):
+            corrs_split = torch.stack(corrs_split)
+        else:
+            corrs_split = np.stack(corrs_split)
 
-    return corrs, corrs_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra
+    return corrs, corrs_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, all_fold_yhat_split
 
 
-def write_encoding_results(args, results, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, filename, folds=None):
+def write_encoding_results(args, results, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, filename, folds=None, all_fold_yhat_split=None):
     """Write output into csv files
 
     Args:
@@ -483,6 +524,7 @@ def write_encoding_results(args, results, result_split, Y_hat, Y_new, Y_hat_extr
         None
     """
     filename = os.path.join(args.output_dir, filename)
+    print(f"Writing to {filename}")
     if torch.is_tensor(results):
         results = results.cpu().numpy()
     if torch.is_tensor(result_split):
@@ -491,7 +533,16 @@ def write_encoding_results(args, results, result_split, Y_hat, Y_new, Y_hat_extr
     results_df.to_csv(filename, index=False, header=False)
     np.savez(filename.replace(".csv", "_split.npz"), result_split=result_split)
     
+    if do_debug:
+        import pdb; pdb.set_trace()
+        
     if "save_preds" in args and args.save_preds:
+        if all_fold_yhat_split is not None:
+            if do_debug:
+                import pdb; pdb.set_trace()
+            with open(filename.replace(".csv", "_yhat_split.p"), "wb") as f:
+                pickle.dump({"all_fold_yhat_split": all_fold_yhat_split, "Y_new": Y_new}, f)
+                
         if torch.is_tensor(Y_hat):
             Y_hat = Y_hat.cpu().numpy()
         if torch.is_tensor(Y_new):
