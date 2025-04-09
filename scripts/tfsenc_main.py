@@ -89,7 +89,7 @@ def skip_elecs_done(summary_file, electrode_info, args):
     #elecs_done = [elec for elec in elecs_done if elec not in ['SG1', 'SG2']]
     if getattr(args, "permute", False):
         elecs_done = [os.path.split(fname)[-1].split("_prod")[0]
-                    for fname in glob.glob(os.path.join(os.path.split(summary_file)[0], "*_prod_perm.csv"))]
+                    for fname in glob.glob(os.path.join(os.path.split(summary_file)[0], "*_prod_perm_split.npz"))]
     else:
         elecs_done = [os.path.split(fname)[-1].split("_prod")[0]
                     for fname in glob.glob(os.path.join(os.path.split(summary_file)[0], "*_prod.csv"))]
@@ -161,13 +161,13 @@ def single_electrode_encoding(electrode, args, datum, stitch_index):
                     args, result, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, f"{elec_name}_comp_perm.csv", folds=prod_data[-1]
                 )
             else:
-                result, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra = run_encoding(
+                result, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, all_fold_yhat_split = run_encoding(
                     args, *comp_data,
                     extra_train_data=extra_train_comp_data ,
                     extra_test_data=extra_test_comp_data,
                 )
                 write_encoding_results(
-                    args, result, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, f"{elec_name}_comp.csv", folds=comp_data[-1]
+                    args, result, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, f"{elec_name}_comp.csv", folds=comp_data[-1], all_fold_yhat_split=all_fold_yhat_split
                 )
     if args.prod and len(prod_data[0]) > 0:  # Production
         if len(np.unique(prod_data[2])) < args.cv_fold_num:
@@ -186,13 +186,13 @@ def single_electrode_encoding(electrode, args, datum, stitch_index):
                     args, result, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, f"{elec_name}_prod_perm.csv", folds=prod_data[-1]
                 )
             else:
-                result, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra = run_encoding(
+                result, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, all_fold_yhat_split = run_encoding(
                     args, *prod_data,
                     extra_train_data=extra_train_prod_data,
                     extra_test_data=extra_test_prod_data
                 )
                 write_encoding_results(
-                    args, result, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, f"{elec_name}_prod.csv", folds=prod_data[-1]
+                    args, result, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, f"{elec_name}_prod.csv", folds=prod_data[-1], all_fold_yhat_split=all_fold_yhat_split
                 )
 
     return (sid, elec_name, len(prod_data[0]), len(comp_data[0]))
