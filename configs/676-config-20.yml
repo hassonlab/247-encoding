@@ -1,0 +1,4 @@
+sid: 676
+conv_ids: np.arange(1, 79)
+elecs: np.arange(121, 127)
+sig_elec_file:

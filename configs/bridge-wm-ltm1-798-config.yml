@@ -1,0 +1,8 @@
+emb_df_paths: /scratch/gpfs/cc27/results/tfs/798/pickles/embeddings/Meta-Llama-3.1-8B_baseline_no_retrieval_fixspace/full/cnxt_0256/layer_16.pkl /scratch/gpfs/cc27/results/tfs/798/pickles/embeddings/Meta-Llama-3.1-8B_retrieval_manual_summaryasrawcontext_fixspace/full/cnxt_0001/layer_16.pkl
+embeds_name: wmnocurr_ltm1_n-2
+emb: Meta-Llama-3.1-8B_baseline_no_retrieval_fixspace
+# Embedding modifications: none, rand, emb, shift-emb, concat-emb
+emb_mod: shift-emb
+# pca_to not used for ridge
+pca_to: 0
+ridge: True
