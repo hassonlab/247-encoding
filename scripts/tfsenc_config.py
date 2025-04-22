@@ -154,6 +154,8 @@ def setup_environ(args):
     args.output_dir = os.path.join(OUTPUT_DIR, RESULT_PARENT_DIR, RESULT_CHILD_DIR)
     if args.cv_fold_num != 10:
         args.output_dir += f"_cv{args.cv_fold_num}"
+    if "n_iter" in args:
+        args.output_dir += f"_niter{args.n_iter}"
     os.makedirs(args.output_dir, exist_ok=True)
 
     if torch.cuda.is_available():
