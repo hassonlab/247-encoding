@@ -265,7 +265,7 @@ def normalize_embeddings(args, df):
 
     return df
 
-
+#@profile
 def trim_datum(args, datum):
     """Trim the datum for lags outside of convo on/offset boundaries
 
@@ -289,7 +289,7 @@ def trim_datum(args, datum):
     )
     return datum
 
-
+#@profile
 def process_embeddings(args, df):
     """Process the datum embeddings based on input arguments
 
@@ -333,7 +333,7 @@ def process_embeddings(args, df):
 
     return df
 
-
+#@profile
 def filter_datum(args, df):
     """Process/clean/filter datum based on args
 
@@ -369,7 +369,7 @@ def filter_datum(args, df):
 
     return df
 
-
+#@profile
 def process_datum(args, df, stitch):
     """Process datum, including
 
@@ -395,7 +395,7 @@ def process_datum(args, df, stitch):
 
     return df
 
-
+#@profile
 def read_datum(args, stitch):
     """Load and process datum
 
@@ -419,8 +419,8 @@ def read_datum(args, stitch):
     if "refrecur" in args.emb:
         base_df = base_df[base_df["annot_type"].isin(["ref", "recur"])]
         base_df.index = np.arange(len(base_df))
-        assert(base_df.shape[0] == emb_df.shape[0]), \
-            f"Base df and emb df length mismatch: {base_df.shape[0]} vs {emb_df.shape[0]}"
+    assert(base_df.shape[0] == emb_df.shape[0]), \
+        f"Base df and emb df length mismatch: {base_df.shape[0]} vs {emb_df.shape[0]}"
     df = pd.merge(base_df, emb_df, left_index=True, right_index=True)
     print(f"After loading: Datum loads with {len(df)} words")
 
