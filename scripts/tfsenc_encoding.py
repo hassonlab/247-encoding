@@ -95,7 +95,6 @@ def encoding_setup(args, elec_name, elec_datum, elec_signal):
     extra_train_prod_data = None
     extra_test_comp_data = None
     extra_test_prod_data = None
-
     if "data_subset_type" in args:
         if args.data_subset_type == "ref_recap_test_only":
             ref_recap_indices = elec_datum.annot_type.isin(["ref", "recap"])
@@ -142,11 +141,14 @@ def encoding_setup(args, elec_name, elec_datum, elec_signal):
                     os.path.join(args.output_dir, "prod_datum_extra_test.csv"), index=False
                 )
             
+        elif args.data_subset_type == "ref_only":
+            print("before subsetting", X.shape, Y.shape)
             # Update X/Y/elec_datum
-            X = X[not_ref_recap_indices, :]
-            Y = Y[not_ref_recap_indices, :]
-            elec_datum = elec_datum[not_ref_recap_indices]
-            
+            X = X[elec_datum.annot_type.isin(["ref"]), :]
+            Y = Y[elec_datum.annot_type.isin(["ref"]), :]
+            elec_datum = elec_datum[
+                elec_datum.annot_type.isin(["ref"])
+            ]
         elif args.data_subset_type == "ref_recap_only":
             print("before subsetting", X.shape, Y.shape)
             if "use_nonannot_as_train" in args and args.use_nonannot_as_train:
@@ -285,7 +287,7 @@ def encoding_regression_permutation(args, X, Y, folds, num_perm=1000, min_roll=5
     corrs = []
     corrs_split = []
     
-    Y = np.nan_to_num(Y)
+    #Y = np.nan_to_num(Y)
     # Circular shift
     np.random.seed(123)
     Yperm = np.zeros((nSamps, nChans * num_perm))
@@ -346,7 +348,7 @@ def encoding_regression_permutation(args, X, Y, folds, num_perm=1000, min_roll=5
 
 
 def encoding_regression(args, X, Y, folds, extra_train_data=None, extra_test_data=None,
-                        n_alphas_batch=50, n_iter=25, debug=False):
+                        n_alphas_batch=50, n_iter=25):
     """Run regression for VM
 
     Args:
@@ -360,7 +362,6 @@ def encoding_regression(args, X, Y, folds, extra_train_data=None, extra_test_dat
     Returns:
         _type_: _description_
     """
-
     nSamps = X.shape[0]
     nChans = Y.shape[1] if Y.shape[1:] else 1
 
@@ -377,9 +378,9 @@ def encoding_regression(args, X, Y, folds, extra_train_data=None, extra_test_dat
 
     # TODO: TAKE OUT FIGURE OUT WHAT IS HAPPENING.
     Y = np.nan_to_num(Y)
-    if debug:
+    if do_debug:
         n_iter = 1
-    if getattr(args, "n_iter", None) is not None:
+    elif getattr(args, "n_iter", None) is not None:
         n_iter = args.n_iter
     
     all_fold_yhat_split = []
@@ -403,6 +404,12 @@ def encoding_regression(args, X, Y, folds, extra_train_data=None, extra_test_dat
         Ytest = Ytest[non_nan_rows_test]
 
         alphas = np.logspace(0, 20, 10)
+        if n_iter == 1:
+            alphas = np.array([4641591])
+            concentration = 1e9
+        else:
+            concentration = [0.1, 1.0]
+ 
         if getattr(args, "kernel_sizes", None) is not None:
             kernel_sizes_cumsum = np.cumsum(args.kernel_sizes)
             if getattr(args, "bridge_type", None) == "GroupRidgeCV":
@@ -422,7 +429,7 @@ def encoding_regression(args, X, Y, folds, extra_train_data=None, extra_test_dat
                 print("Using MultipleKernelRidgeCV")
                 ck = ColumnKernelizer([(f"kernel_{i}", Kernelizer(kernel="linear"), np.arange(kernel_start, kernel_stop))
                                     for i, (kernel_start, kernel_stop) in enumerate(zip([0]+list(kernel_sizes_cumsum[:-1]), kernel_sizes_cumsum))])
-                model = make_pipeline(StandardScaler(), ck, MultipleKernelRidgeCV(kernels="precomputed", solver_params=dict(alphas=alphas, n_iter=n_iter, n_alphas_batch=n_alphas_batch)))
+                model = make_pipeline(StandardScaler(), ck, MultipleKernelRidgeCV(kernels="precomputed", solver_params=dict(alphas=alphas, n_iter=n_iter, n_alphas_batch=n_alphas_batch, concentration=concentration)))
         elif not args.ridge:  # ols
             if args.pca_to == 0:
                 print(f"Running OLS, emb_dim = {Xtrain.shape[1]}")
@@ -475,11 +482,12 @@ def encoding_regression(args, X, Y, folds, extra_train_data=None, extra_test_dat
 
     return (YHAT, Ynew, corrs, corrs_split, YHAT_extra, Ynew_extra, all_fold_yhat_split)
 
-
+#@profile
 def run_encoding(args, X, Y, folds, extra_train_data=None, extra_test_data=None, permute=False):
 
     # train lm and predict
     if permute:
+        all_fold_yhat_split = None
         Y_hat, Y_new, corrs, corrs_split, Y_hat_extra, Y_new_extra = encoding_regression_permutation(args, X, Y, folds)
     else:
         Y_hat, Y_new, corrs, corrs_split, Y_hat_extra, Y_new_extra, all_fold_yhat_split = encoding_regression(args, X, Y, folds, extra_train_data, extra_test_data)
@@ -511,7 +519,7 @@ def run_encoding(args, X, Y, folds, extra_train_data=None, extra_test_data=None,
 
     return corrs, corrs_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, all_fold_yhat_split
 
-
+#@profile
 def write_encoding_results(args, results, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, filename, folds=None, all_fold_yhat_split=None):
     """Write output into csv files
 
