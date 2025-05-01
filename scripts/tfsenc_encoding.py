@@ -371,6 +371,7 @@ def encoding_regression(args, X, Y, folds, extra_train_data=None, extra_test_dat
     Ynew_extra = None
     corrs = []
     corrs_split = []
+    params = {"alphas": [], "gammas": []}
     
     if extra_test_data:
         YHAT_extra = np.zeros((args.cv_fold_num, extra_test_data[0].shape[0], nChans)).astype("float32")
@@ -455,6 +456,11 @@ def encoding_regression(args, X, Y, folds, extra_train_data=None, extra_test_dat
                 )
         torch.cuda.empty_cache()
         model.fit(Xtrain, Ytrain)
+        alphas = model.steps[2][1].best_alphas_
+        gammas = np.exp(model.steps[2][1].deltas_.cpu()) * alphas.cpu()
+        if getattr(args, "save_params", False):
+            params["alphas"].append(alphas.cpu().numpy())
+            params["gammas"].append(gammas.cpu().numpy())
         # Prediction & Correlation
         foldYhat = model.predict(Xtest)
         fold_cors = correlation_score(Ytest, foldYhat)
@@ -480,7 +486,7 @@ def encoding_regression(args, X, Y, folds, extra_train_data=None, extra_test_dat
         Ynew[indices_to_update, :] = Ytest.reshape(-1, nChans)
         YHAT[indices_to_update, :] = foldYhat.reshape(-1, nChans)
 
-    return (YHAT, Ynew, corrs, corrs_split, YHAT_extra, Ynew_extra, all_fold_yhat_split)
+    return (YHAT, Ynew, corrs, corrs_split, YHAT_extra, Ynew_extra, all_fold_yhat_split, params)
 
 #@profile
 def run_encoding(args, X, Y, folds, extra_train_data=None, extra_test_data=None, permute=False):
@@ -488,9 +494,10 @@ def run_encoding(args, X, Y, folds, extra_train_data=None, extra_test_data=None,
     # train lm and predict
     if permute:
         all_fold_yhat_split = None
+        params = None
         Y_hat, Y_new, corrs, corrs_split, Y_hat_extra, Y_new_extra = encoding_regression_permutation(args, X, Y, folds)
     else:
-        Y_hat, Y_new, corrs, corrs_split, Y_hat_extra, Y_new_extra, all_fold_yhat_split = encoding_regression(args, X, Y, folds, extra_train_data, extra_test_data)
+        Y_hat, Y_new, corrs, corrs_split, Y_hat_extra, Y_new_extra, all_fold_yhat_split, params = encoding_regression(args, X, Y, folds, extra_train_data, extra_test_data)
 
     # # Old correlation
     # rps = []
@@ -517,10 +524,11 @@ def run_encoding(args, X, Y, folds, extra_train_data=None, extra_test_data=None,
         else:
             corrs_split = np.stack(corrs_split)
 
-    return corrs, corrs_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, all_fold_yhat_split
+    return corrs, corrs_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, all_fold_yhat_split, params
 
 #@profile
-def write_encoding_results(args, results, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, filename, folds=None, all_fold_yhat_split=None):
+def write_encoding_results(args, results, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, filename, folds=None, all_fold_yhat_split=None,
+                           params=None):
     """Write output into csv files
 
     Args:
@@ -560,6 +568,12 @@ def write_encoding_results(args, results, result_split, Y_hat, Y_new, Y_hat_extr
         np.savez(
             filename.replace(".csv", ".npz"), Y_hat=Y_hat, Y_new=Y_new, folds=folds,
             Y_hat_extra=Y_hat_extra, Y_new_extra=Y_new_extra,
+        )
+    if params is not None:
+        np.savez(
+            filename.replace(".csv", "_params.npz"),
+            alphas=params["alphas"],
+            gammas=params["gammas"],
         )
 
     return

@@ -1,6 +1,8 @@
 import csv
 import glob
 import os
+import torch
+
 from functools import partial
 from multiprocessing import Pool, cpu_count
 
@@ -92,7 +94,7 @@ def skip_elecs_done(summary_file, electrode_info, args):
                     for fname in glob.glob(os.path.join(os.path.split(summary_file)[0], "*_prod_perm_split.npz"))]
     else:
         elecs_done = [os.path.split(fname)[-1].split("_prod")[0]
-                    for fname in glob.glob(os.path.join(os.path.split(summary_file)[0], "*_prod.csv"))]
+                    for fname in glob.glob(os.path.join(os.path.split(summary_file)[0], "*_prod_split.npz"))]
     for elec in elecs_done:  # skipping electrodes
         print(f"Skipping elec {elec}")
         electrode_info = {
@@ -103,7 +105,7 @@ def skip_elecs_done(summary_file, electrode_info, args):
     #assert elecs_num == len(electrode_info), "Wrong number of elecs skipped"
     return electrode_info
 
-
+#@profile
 def single_electrode_encoding(electrode, args, datum, stitch_index):
     """Doing encoding for one electrode
 
@@ -151,7 +153,7 @@ def single_electrode_encoding(electrode, args, datum, stitch_index):
             print(f"{args.sid} {elec_name} comp all NaNs")
         else:
             if "permute" in args and args.permute:
-                result, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra = run_encoding(
+                result, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, _, _ = run_encoding(
                     args, *comp_data,
                     extra_train_data=extra_train_comp_data,
                     extra_test_data=extra_test_comp_data,
@@ -161,13 +163,14 @@ def single_electrode_encoding(electrode, args, datum, stitch_index):
                     args, result, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, f"{elec_name}_comp_perm.csv", folds=prod_data[-1]
                 )
             else:
-                result, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, all_fold_yhat_split = run_encoding(
+                result, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, all_fold_yhat_split, params = run_encoding(
                     args, *comp_data,
                     extra_train_data=extra_train_comp_data ,
                     extra_test_data=extra_test_comp_data,
                 )
                 write_encoding_results(
-                    args, result, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, f"{elec_name}_comp.csv", folds=comp_data[-1], all_fold_yhat_split=all_fold_yhat_split
+                    args, result, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, f"{elec_name}_comp.csv", folds=comp_data[-1], all_fold_yhat_split=all_fold_yhat_split,
+                    params=params
                 )
     if args.prod and len(prod_data[0]) > 0:  # Production
         if len(np.unique(prod_data[2])) < args.cv_fold_num:
@@ -176,28 +179,29 @@ def single_electrode_encoding(electrode, args, datum, stitch_index):
             print(f"{args.sid} {elec_name} prod all NaNs")
         else:
             if "permute" in args and args.permute:
-                result, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra = run_encoding(
+                result, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, _, _ = run_encoding(
                     args, *prod_data,
                     extra_train_data=extra_train_prod_data,
                     extra_test_data=extra_test_prod_data,
                     permute=True
                 )
                 write_encoding_results(
-                    args, result, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, f"{elec_name}_prod_perm.csv", folds=prod_data[-1]
+                    args, result, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, f"{elec_name}_prod_perm.csv", folds=prod_data[-1], params=params
                 )
             else:
-                result, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, all_fold_yhat_split = run_encoding(
+                result, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, all_fold_yhat_split, params = run_encoding(
                     args, *prod_data,
                     extra_train_data=extra_train_prod_data,
                     extra_test_data=extra_test_prod_data
                 )
                 write_encoding_results(
-                    args, result, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, f"{elec_name}_prod.csv", folds=prod_data[-1], all_fold_yhat_split=all_fold_yhat_split
+                    args, result, result_split, Y_hat, Y_new, Y_hat_extra, Y_new_extra, f"{elec_name}_prod.csv", folds=prod_data[-1], all_fold_yhat_split=all_fold_yhat_split,
+                    params=params
                 )
 
     return (sid, elec_name, len(prod_data[0]), len(comp_data[0]))
 
-
+#@profile
 def electrodes_encoding(args, electrode_info, datum, stitch_index):
     """Doing encoding for all electrodes
 
@@ -209,7 +213,7 @@ def electrodes_encoding(args, electrode_info, datum, stitch_index):
     """
 
     summary_file = os.path.join(args.output_dir, "summary.csv")  # summary file
-    if os.path.exists(summary_file):  # previous job
+    if False: #os.path.exists(summary_file):  # previous job
         print("Previously ran the same job, checking for elecs done")
         electrode_info = skip_elecs_done(summary_file, electrode_info, args)
 
@@ -225,9 +229,13 @@ def electrodes_encoding(args, electrode_info, datum, stitch_index):
     return None
 
 
+#@profile
 @main_timer
 def main():
 
+    test = torch.ones(5000).cuda()
+    print(test)
+    
     # Read command line arguments
     args, yml_args = parse_arguments()
 
