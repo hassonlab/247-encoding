@@ -21,15 +21,22 @@ def erp(args, datum, elec_signal, name):
     datum_comp = datum[datum.speaker != "Speaker1"]  # comprehension data
     datum_prod = datum[datum.speaker == "Speaker1"]  # production data
     print(
-        f"{args.sid} {name} Prod: {len(datum_comp.index)} Comp: {len(datum_prod.index)}"
+        f"{args.sid} {name} Comp: {len(datum_comp.index)} Prod: {len(datum_prod.index)}"
     )
 
     erp_comp = calc_average(args.lags, datum_comp, elec_signal)  # calculate average erp
     erp_prod = calc_average(args.lags, datum_prod, elec_signal)  # calculate average erp
 
+    erp_comp = pd.DataFrame(erp_comp)
+    erp_comp["word"] = datum_comp.word.values
+    erp_prod = pd.DataFrame(erp_prod)
+    erp_prod["word"] = datum_prod.word.values
+    erp_comp.to_csv(f"{args.full_output_dir}/{name}_comp_erp_full.csv", index=False)
+    erp_prod.to_csv(f"{args.full_output_dir}/{name}_prod_erp_full.csv", index=False)
+
     print(f"writing output for electrode {name}")
-    write_erp_results(args, erp_comp, name, "comp")
-    write_erp_results(args, erp_prod, name, "prod")
+    # write_erp_results(args, erp_comp, name, "comp")
+    # write_erp_results(args, erp_prod, name, "prod")
 
     return
 
@@ -57,7 +64,7 @@ def calc_average(lags, datum, brain_signal):
             -1
         )  # take the signal for that lag
 
-    erp = [np.mean(erp, axis=(0), dtype=np.float64).tolist()]  # average by words
+    # erp = [np.mean(erp, axis=(0), dtype=np.float64).tolist()]  # average by words
 
     return erp
 
@@ -128,7 +135,10 @@ def load_and_erp(electrode, args, datum, stitch_index):
     # do and save erp
     erp(args, elec_datum, elec_signal, elec_name)
 
-    return
+    comp_len = (elec_datum.speaker != "Speaker1").sum()
+    prod_len = (elec_datum.speaker == "Speaker1").sum()
+
+    return (args.sid, elec_name, prod_len, comp_len)
 
 
 def load_and_erp_parallel(args, electrode_info, datum, stitch_index, parallel=True):
@@ -186,9 +196,9 @@ def main():
     datum = datum.drop("embeddings", axis=1)  # trim datum to smaller size
 
     # Process and do ERP
-    assert args.sig_elec_file == None, "Do not input significant electrode list"
+    # assert args.sig_elec_file == None, "Do not input significant electrode list"
     electrode_info = process_subjects(args)
-    load_and_erp_parallel(args, electrode_info, datum, stitch_index)
+    load_and_erp_parallel(args, electrode_info, datum, stitch_index, False)
 
     return
 

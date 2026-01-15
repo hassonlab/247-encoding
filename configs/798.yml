@@ -1,0 +1,7 @@
+
+# Subject
+sid: 798
+conv_ids: np.arange(1, 16)
+elecs: np.arange(1, 199) # Encoding only for 192
+# No encoding for 193~198:SG1~SG6
+sig_elec_file:

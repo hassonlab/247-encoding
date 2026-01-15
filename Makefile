@@ -24,17 +24,17 @@ E_LIST := $(shell seq 1 125)
 BC :=
 
 # 717 Electrode IDs
-# SID := 7170
-# E_LIST := $(shell seq 1 256)
-# BC :=
+SID := 7170
+E_LIST := $(shell seq 1 256)
+BC :=
 
 # 798 Electrode IDs
-# SID := 798
-# E_LIST := $(shell seq 1 198)
-# BC :=
+SID := 798
+E_LIST := $(shell seq 1 198)
+BC :=
 
 # Sig file will override whatever electrodes you choose
-SIG_FN := 
+SIG_FN := --sig-elec-file $(SID)_4rois.csv
 # SIG_FN := --sig-elec-file tfs-sig-file-glove-$(SID).csv
 # SIG_FN := --sig-elec-file test.csv
 # SIG_FN := --sig-elec-file 129-phase-5000-sig-elec-glove50d-perElec-FDR-01-LH.csv
@@ -161,8 +161,9 @@ EM := llama3
 EM := glove50
 EM := llama3-pred
 EM := shift-emb-concat-emb2-improb
-EM := shift-emb
 EM := shift-emb-concat-emb5
+EM := shift-emb-length
+EM := shift-emb
 
 ############## Datum Modifications ##############
 # Add specific tags concatenated by '-'. The available tags are as below:
@@ -197,11 +198,21 @@ actually predicted by gpt2} (only used for glove embeddings)
 DM := lag2k-25-correct
 DM := lag5k-25-prob-pos-earlypca
 DM := lag5k-25-aligned-improb-earlypca
-DM := lag5k-25-incorrect34-earlypca-200-nopca
-DM := lag5k-25-correct2-earlypca-200-nopca
-DM := lag5k-25-all
+DM := lag5k-25-aligned-improb-earlypca
 DM := lag2k-25-all-earlypca-200
 DM := lag5k-25-all-earlypca-200
+DM := lag5k-25-incorrect22-earlypca-200-nopca
+DM := lag5k-25-improb25-earlypca-200-nopca
+DM := lag5k-25-prob10-earlypca-200-nopca
+DM := lag5k-25-incorrect22-nopca
+DM := lag5k-25-all-phraseend-earlypca-200
+DM := lag5k-25-all-phrasesingle-earlypca-200
+DM := lag5k-25-all-phrasemid-earlypca-200
+DM := lag5k-25-all-phrasevp-earlypca-200
+DM := lag5k-25-correct2-phrasenpt-earlypca-200-nopca
+DM := lag5k-25-incorrect22-phrasenpt-earlypca-200-nopca
+DM := lag5k-25-pos-aligned-correct2
+DM := lag5k-25-pos-aligned-incorrect22
 
 
 ############## Model Modification ##############
@@ -210,9 +221,9 @@ DM := lag5k-25-all-earlypca-200
 # {leave empty for regular encoding}
 MM := best-lag
 MM := pc-flip-best-lag
+MM := ridge
 MM := bridge
 MM := 
-MM := ridge
 
 # Choose the command to run: python runs locally, echo is for debugging, sbatch
 # is for running on SLURM all lags in parallel.
@@ -268,6 +279,41 @@ run-encoding:
 		--normalize $(NM)\
 		--output-parent-dir $(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-$(EM)-$(DM) \
 		--output-prefix $(USR)-$(WS)ms-$(WV);\
+
+
+run-encoding-elecs:
+	mkdir -p logs
+	for elec in $(E_LIST); do\
+		$(CMD) scripts/$(FILE).py \
+			--project-id $(PRJCT_ID) \
+			--pkl-identifier $(PKL_IDENTIFIER) \
+			--datum-emb-fn $(DS) \
+			--sid $(SID) \
+			--conversation-id $(CONVERSATION_IDX) \
+			--electrodes $$elec \
+			--emb-type $(EMB) \
+			--context-length $(CNXT_LEN) \
+			--align-with $(ALIGN_WITH) \
+			--window-size $(WS) \
+			--word-value $(WV) \
+			--npermutations $(NPERM) \
+			--lags $(LAGS) \
+			--min-word-freq $(MWF) \
+			--fold-num $(FN) \
+			--pca-to $(PCA_TO) \
+			--layer-idx $(LAYER_IDX) \
+			--datum-mod $(DM) \
+			--emb-mod $(EM) \
+			--model-mod $(MM) \
+			$(BC) \
+			$(SIG_FN) \
+			$(SH) \
+			$(PSH) \
+			--normalize $(NM)\
+			--output-parent-dir $(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-$(EMB)-$(EM)-$(DM) \
+			--output-prefix $(USR)-$(WS)ms-$(WV);\
+		done;
+
 
 
 run-encoding-layers:
@@ -398,3 +444,36 @@ run-erp:
 		$(SIG_FN) \
 		--output-parent-dir $(DT)-$(PRJCT_ID)-$(PKL_IDENTIFIER)-$(SID)-erp-$(DM) \
 		--output-prefix $(USR)-$(WS)ms-$(WV);\
+
+
+SIDS:= 625
+SIDS:= 625 676 7170 798
+run-cor:
+	mkdir -p logs
+	for sid in $(SIDS); do \
+		python scripts/tfsenc_corr.py \
+			--config-file configs/config.yml configs/$$sid.yml configs/test-cor2.yml; \
+	done;
+
+
+aggregate-results:
+	python scripts/tfsenc_aggregate.py \
+		--label1 625 676 7170 798 \
+		--label2 prob10 prob25 prob30 prob50 improb10 improb25 improb30 improb50 \
+		--format results/tfs/20251024-prob-percents/kw-tfs-full-%s-Llama-2-7b-hf-shift-emb-lag5k-25-%s-earlypca-200-nopca
+
+# 676 22
+# 625 8
+# 798 10
+# 7170 12
+
+CHUNKS := $(shell seq 1 12)
+CHUNKS := $(shell seq 1 8)
+CHUNKS := $(shell seq 1)
+
+npvp:
+	for chunk in $(CHUNKS); do\
+		python scripts/tfsmis_constituency_parse.py  \
+			--sid 798 \
+			--chunk $$chunk;\
+	done;

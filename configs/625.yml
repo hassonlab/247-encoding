@@ -1,0 +1,7 @@
+
+# Subject
+sid: 625
+conv_ids: np.arange(1, 54)
+elecs: np.arange(1, 106) # encoding only for 103
+# No encoding for 95:EEGDPMT_08REF, 105:EEGSG_01REF
+sig_elec_file:

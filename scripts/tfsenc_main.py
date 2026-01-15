@@ -43,12 +43,16 @@ def return_stitch_index(args):
 
 def skip_elecs_done(args, electrode_info):
     # find elecs done
+    npy_files = glob.glob(os.path.join(args.full_output_dir, "*.npy"))
+    csv_files = glob.glob(os.path.join(args.full_output_dir, "*.csv"))
+    elecs_done = [os.path.basename(file) for file in npy_files + csv_files]
     elecs_done = [
-        os.path.basename(file)
-        for file in glob.glob(os.path.join(args.full_output_dir, "*_*.csv"))
-    ]
-    elecs_done = [
-        elec.replace("_fold", "").replace("prod", "comp").replace("_comp.csv", "")
+        elec.replace("_fold", "")
+        .replace("_yhat", "")
+        .replace("_ynew", "")
+        .replace("prod", "comp")
+        .replace("_comp.csv", "")
+        .replace("_comp.npy", "")
         for elec in elecs_done
     ]
     elecs_counts = Counter(elecs_done)
@@ -66,7 +70,6 @@ def skip_elecs_done(args, electrode_info):
                 if (val != elec or key[0] != int(sid_string))
             }
             elecs_num -= 1
-
     # assert elecs_num == len(electrode_info), "Wrong number of elecs skipped"
     return electrode_info
 
@@ -187,10 +190,10 @@ def single_electrode_encoding(electrode, args, datum, stitch_index):
     else:
         prod_test, comp_test = prod_train, comp_train
 
-    if len(prod_train[0]) > 0 and len(prod_test[0]) > 0:
-        run_regression(args, *prod_train, *prod_test, elec_name, "prod")
     if len(comp_train[0]) > 0 and len(comp_test[0]) > 0:
         run_regression(args, *comp_train, *comp_test, elec_name, "comp")
+    if len(prod_train[0]) > 0 and len(prod_test[0]) > 0:
+        run_regression(args, *prod_train, *prod_test, elec_name, "prod")
     return (sid, elec_name, len(prod_X), len(comp_X))
 
 
@@ -232,6 +235,7 @@ def parallel_encoding(args, electrode_info, datum, stitch_index, parallel=True):
                 writer.writerow(result)
     else:
         print("Running all electrodes")
+        electrode_info = skip_elecs_done(args, electrode_info)
         for electrode in electrode_info.items():
             single_electrode_encoding(electrode, args, datum, stitch_index)
             # try:

@@ -1,0 +1,8 @@
+
+# Subject
+sid: 7170
+conv_ids: np.arange(1, 25)
+elecs: np.arange(1, 257) # Encoding only for 254
+# No encoding for 255: C255
+# sig_elec_file: 20250630-sts/all_sig_sts_7170.csv
+sig_elec_file:

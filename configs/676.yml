@@ -1,0 +1,7 @@
+
+# Subject
+sid: 676
+conv_ids: np.arange(1, 79)
+elecs: np.arange(1, 126) # Encoding only for 124
+# No encoding for 125: ECGEKG1REF
+sig_elec_file:

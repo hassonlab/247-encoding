@@ -1,0 +1,12 @@
+
+# Embeddings
+emb: seamless-m4t-v2-large-encoder
+context_length: 4096
+layer_idx: 24
+
+pred_cache: results/tfs/20251019-len-bridge/kw-tfs-full-%s-Llama-2-7b-hf-shift-emb-length-lag5k-25-correct2-earlypca-200-bridge/kw-200ms-all-%s/
+test_mod: regular
+
+# Lags  
+lags: np.arange(-5000,5001,25)
+output_dir_name: correct2-regular

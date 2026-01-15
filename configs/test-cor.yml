@@ -1,0 +1,12 @@
+
+# Embeddings
+emb: seamless-m4t-v2-large-encoder
+context_length: 4096
+layer_idx: 24
+
+pred_cache: results/tfs/20250428-br-preds/kw-tfs-%s-seamless-m4t-v2-large-encoder-bridge3-lag2k-25-all-npy-fixfold/kw-200ms-%s/
+test_mod: align-utt-squared_lag
+
+# Lags  
+lags: np.arange(-2000,2001,25)
+output_dir_name: align-utt

@@ -133,22 +133,28 @@ def encoding_cv_bridge(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, elec, m
     nSamps = Xtes.shape[0]
     nChans = Ytra.shape[1] if Ytra.shape[1:] else 1
 
-    emb_dim = 4096
-    if Xtes.shape[1] % emb_dim == 0:
-        concats = int(Xtes.shape[1] / emb_dim)
-        feat_spaces = [f"n+{concat}" for concat in np.arange(1, concats)]
-        feat_spaces = ["n"] + feat_spaces
-    columns = []
-    start = 0
-    for feat_space in feat_spaces:
-        column = (feat_space, StandardScaler(), slice(start, start + emb_dim))
-        columns.append(column)
-        start += emb_dim
+    # emb_dim = 4096
+    # if Xtes.shape[1] % emb_dim == 0:
+    #     concats = int(Xtes.shape[1] / emb_dim)
+    #     feat_spaces = [f"n+{concat}" for concat in np.arange(1, concats)]
+    #     feat_spaces = ["n"] + feat_spaces
+    # columns = []
+    # start = 0
+    # for feat_space in feat_spaces:
+    #     column = (feat_space, StandardScaler(), slice(start, start + emb_dim))
+    #     columns.append(column)
+    #     start += emb_dim
+    feat_spaces = ["emb", "word_len", "gap_len"]
+    columns = [
+        ("emb", StandardScaler(), slice(0, 200)),
+        ("word_len", StandardScaler(), slice(200, 201)),
+        ("gap_len", StandardScaler(), slice(201, 202)),
+    ]
 
     YHAT = np.zeros((len(feat_spaces), nSamps, nChans))
     Ynew = np.zeros((nSamps, nChans))
     solver = "random_search"
-    n_iter = 10
+    n_iter = 100
     alphas = np.logspace(0, 20, 10)
 
     for i in range(0, args.fold_num):
@@ -187,29 +193,31 @@ def encoding_cv_bridge(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, elec, m
     ##### CORRELATION #####
     Ynew = Ynew.astype("float32")
     YHAT = YHAT.astype("float32")
-    if len(feat_spaces) > 1:
-        cor_res = correlation_score_split(Ynew, YHAT[0:, :, :])
-    else:
-        cor_res = correlation_score(Ynew, YHAT[0, :, :])
-    ##### WRITING #####
-    trial_str = append_jobid_to_string(args, mode)
-    filename = os.path.join(args.full_output_dir, f"{elec}{trial_str}.csv")
+    # if len(feat_spaces) > 1:
+    #     cor_res = correlation_score_split(Ynew, YHAT[0:, :, :])
+    # else:
+    #     cor_res = correlation_score(Ynew, YHAT[0, :, :])
+    # ##### WRITING #####
+    # trial_str = append_jobid_to_string(args, mode)
+    # filename = os.path.join(args.full_output_dir, f"{elec}{trial_str}.csv")
 
-    if len(feat_spaces) > 1:  # banded ridge
-        for feat_idx, feat_space in enumerate(feat_spaces):
-            filename_feat = os.path.join(
-                args.full_output_dir, f"{elec}{trial_str}_{feat_space}.csv"
-            )
-            with open(filename_feat, "w") as csvfile:
-                print(f"writing file {feat_space}")
-                csvwriter = csv.writer(csvfile)
-                csvwriter.writerow(cor_res[feat_idx, :].tolist())
-        cor_res = torch.sum(cor_res, axis=0)
+    # if len(feat_spaces) > 1:  # banded ridge
+    #     for feat_idx, feat_space in enumerate(feat_spaces):
+    #         filename_feat = os.path.join(
+    #             args.full_output_dir, f"{elec}{trial_str}_{feat_space}.csv"
+    #         )
+    #         with open(filename_feat, "w") as csvfile:
+    #             print(f"writing file {feat_space}")
+    #             csvwriter = csv.writer(csvfile)
+    #             csvwriter.writerow(cor_res[feat_idx, :].tolist())
+    #     cor_res = torch.sum(cor_res, axis=0)
 
-    with open(filename, "w") as csvfile:
-        print("writing file")
-        csvwriter = csv.writer(csvfile)
-        csvwriter.writerow(cor_res.tolist())
+    # with open(filename, "w") as csvfile:
+    #     print("writing file")
+    #     csvwriter = csv.writer(csvfile)
+    #     csvwriter.writerow(cor_res.tolist())
+    np.save(os.path.join(args.full_output_dir, f"{elec}_{mode}_yhat.npy"), YHAT)
+    np.save(os.path.join(args.full_output_dir, f"{elec}_{mode}_ynew.npy"), Ynew)
 
     return
 

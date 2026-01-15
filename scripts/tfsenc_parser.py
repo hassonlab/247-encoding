@@ -1,5 +1,6 @@
 import argparse
 import sys
+import numpy as np
 
 
 def parse_arguments():
@@ -118,5 +119,8 @@ def parse_arguments():
         args.emb_mod = "None"
     if not args.datum_mod:
         args.datum_mod = "None"
+
+    if len(args.electrodes) == 1:
+        args.electrodes = [int(args.electrodes[0] + i) for i in np.arange(0, 20)]
 
     return args
