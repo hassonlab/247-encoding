@@ -129,9 +129,10 @@ def encoding_cv_ridge(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, elec, mo
     Ynew = np.zeros((nSamps, nChans))
 
     for i in range(0, args.fold_num):
-        Xtraf, Xtesf = Xtra[fold_tra != i], Xtes[fold_tes == i]
-        Ytraf, Ytesf = Ytra[fold_tra != i], Ytes[fold_tes == i]
 
+        Xtraf, Xtesf = Xtra[(fold_tra != i) & (fold_tra != 100)], Xtes[fold_tes == i]
+        Ytraf, Ytesf = Ytra[(fold_tra != i) & (fold_tra != 100)], Ytes[fold_tes == i]
+        # print(f"Fold{i}: Xtra:{Xtra.shape}, Xtraf:{Xtraf.shape}, Xtesf:{Xtesf.shape}")
         Ytesf -= np.mean(Ytraf, axis=0)
         Ytraf -= np.mean(Ytraf, axis=0)
 
@@ -141,6 +142,7 @@ def encoding_cv_ridge(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, elec, mo
         Ytraf = Ytraf.astype("float32")
         Xtesf = Xtesf.astype("float32")
         Ytesf = Ytesf.astype("float32")
+
         if "bridge" in args.model_mod:  # Banded Ridge
             column_pipeline = make_pipeline(
                 StandardScaler(with_mean=True, with_std=True),
@@ -173,7 +175,7 @@ def encoding_cv_ridge(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, elec, mo
                     solver_params=solver_params,
                 ),
             )
-        elif Xtra.shape[0] < Xtra.shape[1]:  # Kernel Ridge
+        elif Xtraf.shape[0] < Xtraf.shape[1]:  # Kernel Ridge
             model = make_pipeline(StandardScaler(), KernelRidgeCV(alphas=alphas))
         else:  # Ridge
             model = make_pipeline(StandardScaler(), RidgeCV(alphas=alphas))
@@ -224,7 +226,7 @@ def encoding_cv_ridge(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, elec, mo
                 csvwriter.writerow(cor_res[feat_idx, :].tolist())
         cor_res = torch.sum(cor_res, axis=0)
 
-    with open(filename, "w") as csvfile:
+    with open(filename, "a") as csvfile:
         print("writing file")
         csvwriter = csv.writer(csvfile)
         csvwriter.writerow(cor_res.tolist())
@@ -339,9 +341,30 @@ def run_regression(args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, elec_name, 
         # FIXME Note from Ken:
         # Cleander code. Includes encoding and writing to results
         # still need to set up per fold correlation and best lag model
-        encoding_cv_ridge(
-            args, Xtra, Ytra, fold_tra, Xtes, Ytes, fold_tes, elec_name, mode
-        )
+        for _ in range(20):
+            fold_tra2 = fold_tra.copy()
+            if "-tra" in args.datum_mod:
+                for j in range(0, args.fold_num):
+                    fold_indices = np.where(fold_tra == j)[0]
+                    fold_size = len(fold_indices)
+                    if "half" in args.datum_mod:
+                        size = fold_size // 2 + 1
+                    elif "quarter" in args.datum_mod:
+                        size = fold_size // 4 + 1
+                    elif "tenth" in args.datum_mod:
+                        size = fold_size // 10 + 1
+                    start_idx = np.random.randint(
+                        fold_indices[0], fold_indices[-1] - size, 1
+                    ).item()  # random start index
+                    mask = np.ones(len(fold_tra), dtype=bool)
+                    mask = np.logical_and(mask, fold_tra == j)  # choose this fold
+                    mask[start_idx : start_idx + size] = (
+                        False  # keep the contiguous chunk
+                    )
+                    fold_tra2[mask] = 100
+            encoding_cv_ridge(
+                args, Xtra, Ytra, fold_tra2, Xtes, Ytes, fold_tes, elec_name, mode
+            )
         return
 
     # PCA

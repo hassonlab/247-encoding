@@ -331,7 +331,7 @@ def main():
             axis=1,
             inplace=True,
         )
-    elif "word-freq-all" in args.datum_mod:
+    elif "word-freq" in args.datum_mod:
         # add frequency
         freq_df = pd.read_csv(
             "/projects/HASSON/247/plotting/paper-prob-improb/unigram_freq.csv"

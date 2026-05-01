@@ -117,13 +117,13 @@ ALIGN_WITH :=
 # Choose layer of embeddings to use
 # {1 for glove, 48 for gpt2, 8 for blenderbot encoder, 16 for blenderbot decoder}
 LAYER_IDX := 23 24 25 27 28 29 31 32
-LAYER_IDX := 00 01 02 03 04 05 06 07 08 09 10 11 12
-LAYER_IDX := 00 01 02 03 04 05 06 07 08 09 $(shell seq 10 44)
 LAYER_IDX := 05 08 09 $(shell seq 10 16) $(shell seq 18 25) 27 28 29 31 32 33 34 35 37 38 39 40 42 43 44 02 04 
+LAYER_IDX := 00 01 02 03 04 05 06 07 08 09 $(shell seq 10 44)
+LAYER_IDX := 00 01 02 03 04 05 06 07 08 09 10 11 12
 LAYER_IDX := 00
 
 # Choose whether to PCA (0 or for no pca)
-PCA_TO := 50
+PCA_TO := 2
 
 # Specify the minimum word frequency (0 for 247, 5 for podcast)
 MWF := 0
@@ -162,8 +162,9 @@ NM := l2
 # {glove50: force glove embeddings for glove50 pred}
 
 EM := glove50
-EM := 
 EM := arb
+EM := shift-emb
+EM := 
 
 
 ############## Datum Modifications ##############
@@ -199,7 +200,7 @@ actually predicted by gpt2} (only used for glove embeddings)
 DM := lag2k-25-incorrect
 DM := lag10k-25-all
 DM := lag2k-25-all-concat-3l
-DM := lag2k-25-all
+DM := word-freq-lag2k-25-all
 
 
 ############## Model Modification ##############
@@ -209,8 +210,8 @@ DM := lag2k-25-all
 MM := best-lag
 MM := pc-flip-best-lag
 MM := bridge
-MM := 
 MM := ridge
+MM := 
 
 # Choose the command to run: python runs locally, echo is for debugging, sbatch
 # is for running on SLURM all lags in parallel.

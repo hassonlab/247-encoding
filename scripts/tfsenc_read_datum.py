@@ -512,12 +512,12 @@ def mod_datum(args, datum):
     if "-all" in args.datum_mod:  # all tokens
         pass
 
-    elif "-half" in args.datum_mod:
-        datum = datum.sample(frac=0.5, random_state=42).sort_index()
-    elif "-quarter" in args.datum_mod:
-        datum = datum.sample(frac=0.25, random_state=42).sort_index()
-    elif "-tenth" in args.datum_mod:
-        datum = datum.sample(frac=0.1, random_state=42).sort_index()
+    # elif "-half" in args.datum_mod:
+    #     datum = datum.sample(frac=0.5, random_state=42).sort_index()
+    # elif "-quarter" in args.datum_mod:
+    #     datum = datum.sample(frac=0.25, random_state=42).sort_index()
+    # elif "-tenth" in args.datum_mod:
+    #     datum = datum.sample(frac=0.1, random_state=42).sort_index()
 
     elif "-zeroshot" in args.datum_mod:  # zeroshot tokens
         datum = zeroshot_datum(datum)
