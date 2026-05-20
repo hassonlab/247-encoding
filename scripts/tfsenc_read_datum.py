@@ -206,8 +206,8 @@ def rand_emb(df):
     emb_max = df.embeddings.apply(max).max()
     emb_min = df.embeddings.apply(min).min()
 
-    # rand_emb = np.random.random((len(df), 200))
-    rand_emb = np.random.random((len(df), 50))
+    rand_emb = np.random.random((len(df), 200))
+    # rand_emb = np.random.random((len(df), 50))
     rand_emb = rand_emb * (emb_max - emb_min) + emb_min
     df2 = df.copy()  # setting copy to avoid warning
     df2["embeddings"] = list(rand_emb)
@@ -548,9 +548,9 @@ def process_embeddings(args, df):
         df = shift_emb(args, df, "shift-emb")
     if "concat-emb" in args.emb_mod:  # concatenate embeddings
         df = concat_emb(args, df, "concat-emb")
-    if "-rand" in args.emb_mod:  # random embeddings
+    if "rand" in args.emb_mod:  # random embeddings
         df = rand_emb(df)
-    elif "-arb" in args.emb_mod:  # artibtrary embeddings
+    elif "arb" in args.emb_mod:  # artibtrary embeddings
         df = arb_emb(df)
     else:
         pass
@@ -776,23 +776,23 @@ def mod_datum_by_preds(args, datum):
     else:  # exception
         raise Exception("Invalid Datum Modification")
 
-    if True:
-        datum.drop(columns="embeddings", inplace=True)
-        datum_top.to_pickle(f"{args.sid}_gpt2_32_cor.pkl")
-        datum_bot.to_pickle(f"{args.sid}_gpt2_32_incor.pkl")
-        datum_mid.to_pickle(f"{args.sid}_gpt2_32_mid.pkl")
-        datum_top[datum_top.word.isin(datum_bot.word.unique())].to_pickle(
-            f"{args.sid}_gpt2_32_cor_a.pkl"
-        )
-        datum_bot[datum_bot.word.isin(datum_top.word.unique())].to_pickle(
-            f"{args.sid}_gpt2_32_incor_a.pkl"
-        )
-        datum.to_pickle(f"{args.sid}_gpt2_32_all.pkl")
+    # if True:
+    #     datum.drop(columns="embeddings", inplace=True)
+    #     datum_top.to_pickle(f"{args.sid}_gpt2_32_cor.pkl")
+    #     datum_bot.to_pickle(f"{args.sid}_gpt2_32_incor.pkl")
+    #     datum_mid.to_pickle(f"{args.sid}_gpt2_32_mid.pkl")
+    #     datum_top[datum_top.word.isin(datum_bot.word.unique())].to_pickle(
+    #         f"{args.sid}_gpt2_32_cor_a.pkl"
+    #     )
+    #     datum_bot[datum_bot.word.isin(datum_top.word.unique())].to_pickle(
+    #         f"{args.sid}_gpt2_32_incor_a.pkl"
+    #     )
+    #     datum.to_pickle(f"{args.sid}_gpt2_32_all.pkl")
 
-        breakpoint()
+    #     breakpoint()
 
-        datum_top["word_num"] = datum_top.groupby(datum_top.word).cumcount() + 1
-        datum_bot["word_num"] = datum_bot.groupby(datum_bot.word).cumcount() + 1
+    #     datum_top["word_num"] = datum_top.groupby(datum_top.word).cumcount() + 1
+    #     datum_bot["word_num"] = datum_bot.groupby(datum_bot.word).cumcount() + 1
 
     return datum
 

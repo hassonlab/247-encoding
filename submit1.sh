@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --time=1:10:00
+#SBATCH --time=1:30:00
 #SBATCH --mem=80GB
 ##SBATCH --gres=gpu:1
 ##SBATCH --constraint=gpu80

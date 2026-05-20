@@ -18,15 +18,15 @@ E_LIST := $(shell seq 1 105)
 BC := 
 
 # 676 Electrode IDs
-SID := 676
-E_LIST := $(shell seq 1 125)
-# BC := --bad-convos 38 39
-BC :=
+# SID := 676
+# E_LIST := $(shell seq 1 125)
+# # BC := --bad-convos 38 39
+# BC :=
 
 # 717 Electrode IDs
-SID := 7170
-E_LIST := $(shell seq 1 256)
-BC :=
+# SID := 7170
+# E_LIST := $(shell seq 1 256)
+# BC :=
 
 # 798 Electrode IDs
 SID := 798
@@ -34,7 +34,7 @@ E_LIST := $(shell seq 1 198)
 BC :=
 
 # Sig file will override whatever electrodes you choose
-SIG_FN := --sig-elec-file $(SID)_4rois.csv
+# SIG_FN := --sig-elec-file $(SID)_4rois.csv
 # SIG_FN := --sig-elec-file tfs-sig-file-glove-$(SID).csv
 # SIG_FN := --sig-elec-file test.csv
 # SIG_FN := --sig-elec-file 129-phase-5000-sig-elec-glove50d-perElec-FDR-01-LH.csv
@@ -158,12 +158,12 @@ NM := l2
 
 EM := 
 EM := llama3
-EM := glove50
 EM := llama3-pred
 EM := shift-emb-concat-emb2-improb
 EM := shift-emb-concat-emb5
 EM := shift-emb-length
-EM := shift-emb
+EM := glove50
+EM := arb-200
 
 ############## Datum Modifications ##############
 # Add specific tags concatenated by '-'. The available tags are as below:
@@ -204,7 +204,6 @@ DM := lag5k-25-all-earlypca-200
 DM := lag5k-25-incorrect22-earlypca-200-nopca
 DM := lag5k-25-improb25-earlypca-200-nopca
 DM := lag5k-25-prob10-earlypca-200-nopca
-DM := lag5k-25-incorrect22-nopca
 DM := lag5k-25-all-phraseend-earlypca-200
 DM := lag5k-25-all-phrasesingle-earlypca-200
 DM := lag5k-25-all-phrasemid-earlypca-200
@@ -213,6 +212,8 @@ DM := lag5k-25-correct2-phrasenpt-earlypca-200-nopca
 DM := lag5k-25-incorrect22-phrasenpt-earlypca-200-nopca
 DM := lag5k-25-pos-aligned-correct2
 DM := lag5k-25-pos-aligned-incorrect22
+DM := lag5k-25-aligned-correct2-nopca
+DM := lag5k-25-aligned-incorrect22-nopca
 
 
 ############## Model Modification ##############
