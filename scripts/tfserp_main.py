@@ -27,14 +27,14 @@ def erp(args, datum, elec_signal, name):
     erp_comp = calc_average(args.lags, datum_comp, elec_signal)  # calculate average erp
     erp_prod = calc_average(args.lags, datum_prod, elec_signal)  # calculate average erp
 
-    erp_comp = pd.DataFrame(erp_comp)
+    erp_comp = pd.DataFrame(erp_comp) # HACK for word level ERP
     erp_comp["word"] = datum_comp.word.values
     erp_prod = pd.DataFrame(erp_prod)
     erp_prod["word"] = datum_prod.word.values
     erp_comp.to_csv(f"{args.full_output_dir}/{name}_comp_erp_full.csv", index=False)
     erp_prod.to_csv(f"{args.full_output_dir}/{name}_prod_erp_full.csv", index=False)
 
-    print(f"writing output for electrode {name}")
+    # print(f"writing output for electrode {name}")
     # write_erp_results(args, erp_comp, name, "comp")
     # write_erp_results(args, erp_prod, name, "prod")
 
@@ -65,6 +65,7 @@ def calc_average(lags, datum, brain_signal):
         )  # take the signal for that lag
 
     # erp = [np.mean(erp, axis=(0), dtype=np.float64).tolist()]  # average by words
+    # HACK uncomment previous line for word level ERP
 
     return erp
 
